@@ -153,21 +153,38 @@
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #toast.warn { background: #241a0d; border-color: #8a6a30; color: #e8c887; }
 
-  /* ---------- phones and short screens ---------- */
-  @media (max-width: 900px), (max-height: 560px) {
+  /* ---------- shared compact sizing on any small screen ---------- */
+  @media (max-width: 900px), (max-height: 620px) {
     body { padding: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
-    #stage { gap: 4px; width: 100%; }
+    #stage { gap: 4px; }
 
-    #score { padding: 4px 5px; gap: 5px; border-radius: 6px; }
-    .plate { min-width: 0; flex: 1; padding: 3px 8px; gap: 6px; }
+    #score { padding: 3px 5px; gap: 5px; border-radius: 6px; }
+    .plate { min-width: 0; flex: 1; padding: 2px 8px; gap: 6px; }
     .who { font-size: 11px; gap: 5px; letter-spacing: .5px; }
     .dot { width: 13px; height: 13px; }
-    .pts { font-size: 19px; }
+    .pts { font-size: 18px; }
     #mid { flex: 0 0 auto; }
     #games { font-size: 8.5px; letter-spacing: 1.5px; }
     #last, #history { display: none; }
     .youtag { font-size: 7px; padding: 1px 3px; }
 
+    #panel { padding: 4px 6px; gap: 6px; border-radius: 6px; }
+    #msg { font-size: 11.5px; }
+    #roll { font-size: 14px; padding: 10px 18px; min-height: 42px; }
+    #undo, #menuBtn { padding: 10px 12px; min-height: 42px; font-size: 12px; }
+    .hint { display: none; }
+
+    .card { padding: 16px 15px; gap: 10px; width: 100%; }
+    #netCard { width: 100%; }
+    #qr svg, #qr img { width: 140px; height: 140px; }
+    #codeBig { font-size: 29px; letter-spacing: 6px; }
+    .card .btns button, .seg button { min-height: 42px; }
+    #toast { font-size: 12.5px; padding: 9px 15px; }
+  }
+
+  /* ---------- portrait phone: stack the panels above the board ---------- */
+  @media (max-width: 760px) and (orientation: portrait) {
+    #stage { width: 100%; }
     #main { flex-direction: column; gap: 4px; }
     #side {
       width: 100%; flex-direction: row; align-items: center; gap: 5px;
@@ -178,28 +195,49 @@
     .pip .nm { font-size: 9.5px; letter-spacing: .5px; }
     .pip .v { font-size: 17px; margin-left: auto; }
     #netpill { font-size: 8px; padding: 4px 6px; }
-
-    #panel { padding: 5px 6px; gap: 6px; border-radius: 6px; }
-    #msg { font-size: 11.5px; }
-    #roll { font-size: 14px; padding: 11px 20px; min-height: 44px; }
-    #undo, #menuBtn { padding: 11px 13px; min-height: 44px; font-size: 12px; }
-    .hint { display: none; }
-
-    .card { padding: 16px 15px; gap: 10px; width: 100%; }
-    #netCard { width: 100%; }
-    #qr svg, #qr img { width: 140px; height: 140px; }
-    #codeBig { font-size: 29px; letter-spacing: 6px; }
-    .card .btns button, .seg button { min-height: 42px; }
   }
 
-  /* portrait phone: a landscape board gets cramped, so say so */
+  /* ---------- landscape phone: keep the side column so the board gets the height ---------- */
+  @media (max-height: 620px) and (orientation: landscape) {
+    #side { width: 104px; padding: 5px 6px; gap: 4px; }
+    #side h3, #legend, #lead, .pip .d { display: none; }
+    .pip { padding: 4px 6px; }
+    .pip .nm { font-size: 9px; letter-spacing: .3px; gap: 4px; }
+    .pip .v { font-size: 17px; }
+    #netpill { font-size: 7.5px; padding: 3px 4px; margin-top: auto; }
+    #score { padding: 2px 5px; }
+    .pts { font-size: 16px; }
+    .who { font-size: 10px; }
+    #games { display: none; }
+  }
+
+  /* ---------- portrait on a phone: ask for landscape, the board needs the width ---------- */
   #rotate { display: none; }
-  @media (max-width: 760px) and (orientation: portrait) {
-    #rotate {
-      display: block; font-size: 10.5px; color: #a8916a; text-align: center;
-      background: #241a12; border: 1px solid #4a3826; border-radius: 6px; padding: 5px;
+  #portraitGate { display: none; }
+  @media (max-width: 900px) and (orientation: portrait) {
+    #portraitGate {
+      display: flex; position: fixed; inset: 0; z-index: 60;
+      background: #14100c; flex-direction: column; align-items: center; justify-content: center;
+      gap: 20px; text-align: center; padding: 28px;
     }
+    body.force-portrait #portraitGate { display: none; }
   }
+  #portraitGate .phone {
+    width: 74px; height: 128px; border: 3px solid #8a683c; border-radius: 12px;
+    position: relative; animation: tilt 2.4s ease-in-out infinite;
+  }
+  #portraitGate .phone::after {
+    content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 7px; width: 26px; height: 3px; border-radius: 2px; background: #8a683c;
+  }
+  @keyframes tilt {
+    0%, 30% { transform: rotate(0deg); }
+    55%, 85% { transform: rotate(-90deg); }
+    100% { transform: rotate(0deg); }
+  }
+  #portraitGate h2 { margin: 0; font-size: 19px; font-weight: normal; letter-spacing: 3px; color: #c8a870; }
+  #portraitGate p { margin: 0; font-size: 13px; color: #9c8a70; line-height: 1.6; max-width: 300px; }
+  #portraitGate button { background: none; border: none; color: #6f6047; font-size: 11.5px; text-decoration: underline; padding: 10px; }
 </style>
 </head>
 <body>
@@ -214,8 +252,6 @@
     </div>
     <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span>DAVID<span class="dot b"></span></span></div>
   </div>
-
-  <div id="rotate">Turn your phone sideways for a bigger board</div>
 
   <div id="main">
     <div id="side">
@@ -244,6 +280,13 @@
     <button class="small" id="menuBtn">Menu</button>
   </div>
   <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
+</div>
+
+<div id="portraitGate">
+  <div class="phone"></div>
+  <h2>TURN YOUR PHONE</h2>
+  <p>Backgammon needs the width — a board squeezed into a portrait screen is too small to play on.</p>
+  <button id="forcePortrait">Play in portrait anyway</button>
 </div>
 
 <div id="toast"></div>
@@ -1633,12 +1676,13 @@ function draw() {
 
 /* ---------- fit to whatever screen we're on ---------- */
 const ASPECT = W / H;
-const stackedLayout = () => window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;
+const stackedLayout = () => window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches;
 function fitBoard() {
   const stage = $('stage'), side = $('side');
   const stacked = stackedLayout();
-  const pad = stacked ? 8 : 16;
-  const gap = stacked ? 4 : 7;
+  const small = window.matchMedia('(max-width: 900px), (max-height: 620px)').matches;
+  const pad = small ? 8 : 16;
+  const gap = small ? 4 : 7;
 
   stage.style.width = stacked ? '100%' : 'auto';
   cv.style.width = '0px'; cv.style.height = '0px';
@@ -1647,7 +1691,7 @@ function fitBoard() {
   const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
 
   const rows = $('score').offsetHeight + $('panel').offsetHeight
-             + ($('hint').offsetHeight || 0) + ($('rotate').offsetHeight || 0)
+             + ($('hint').offsetHeight || 0)
              + (stacked ? side.offsetHeight : 0);
   const gaps = gap * (stacked ? 4 : 3);
 
@@ -1663,6 +1707,12 @@ function fitBoard() {
   if (!stacked) stage.style.width = Math.round(w + side.offsetWidth + 8) + 'px';
 }
 const refit = () => { fitBoard(); fitBoard(); };
+
+/* Ask for landscape where the browser allows it (Android/fullscreen); harmless elsewhere. */
+async function tryLockLandscape() {
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }
+  catch (e) { /* iOS Safari and most non-fullscreen contexts refuse — the gate covers it */ }
+}
 window.addEventListener('resize', refit);
 window.addEventListener('orientationchange', () => setTimeout(refit, 250));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
@@ -1692,8 +1742,10 @@ function startLocal() {
   netStatus('', '');
   gate(); refit(); draw();
 }
-$('startLocal').onclick = startLocal;
+$('forcePortrait').onclick = () => { document.body.classList.add('force-portrait'); refit(); };
+$('startLocal').onclick = () => { tryLockLandscape(); startLocal(); };
 $('startOnline').onclick = () => {
+  tryLockLandscape();
   $('startModal').hidden = true;
   $('netModal').hidden = false;
   showTab('host');
