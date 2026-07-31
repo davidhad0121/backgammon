@@ -150,6 +150,24 @@
   .netnote { font-size: 10.5px; color: #7d6d56; line-height: 1.55; text-align: center; }
   .sidechoice { display: flex; gap: 7px; align-items: center; justify-content: center; font-size: 12px; color: #c0ac8c; }
 
+  /* move history */
+  #histCard { width: 380px; }
+  #histList {
+    max-height: 46dvh; overflow-y: auto; background: #1b130d; border: 1px solid #372a1c;
+    border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.75;
+  }
+  #histList .row { display: flex; gap: 8px; }
+  #histList .no { color: #6f6047; min-width: 22px; text-align: right; }
+  #histList .pl { min-width: 44px; letter-spacing: .5px; }
+  #histList .pl.j { color: #e8dcc8; }
+  #histList .pl.d { color: #9c8a70; }
+  #histList .mv { color: #c8a870; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+  #histList .none { color: #6f6047; font-style: italic; }
+  #lastMove {
+    font-size: 9.5px; color: #9c8a70; line-height: 1.35; text-align: center;
+    font-family: ui-monospace, Menlo, monospace; min-height: 12px;
+  }
+
   /* theme picker */
   #themeCard { width: 400px; }
   .swatchLabel { font-size: 9.5px; letter-spacing: 2.5px; color: #8a7860; margin-top: 2px; }
@@ -221,6 +239,8 @@
     .pip .nm { font-size: 9.5px; letter-spacing: .5px; }
     .pip .v { font-size: 17px; margin-left: auto; }
     #netpill { font-size: 8px; padding: 4px 6px; }
+    #side button.small { font-size: 8px; padding: 5px 4px; }
+    #lastMove { display: none; }
   }
 
   /* ---------- landscape phone: stack the chrome in a narrow left column so the
@@ -252,6 +272,8 @@
     .pip .nm .dot { width: 9px; height: 9px; }
     .pip .v { font-size: 15px; margin-left: auto; }
     #netpill { font-size: 7px; padding: 3px; letter-spacing: .8px; }
+    #side button.small { font-size: 7.5px; padding: 4px 2px; letter-spacing: 0; }
+    #lastMove { font-size: 7.5px; }
 
     #panel {
       flex-direction: column; align-items: stretch; justify-content: center;
@@ -319,7 +341,10 @@
       </div>
       <div id="lead">Level</div>
       <div id="netpill">SAME DEVICE</div>
+      <div id="lastMove"></div>
       <button class="small" id="themeBtn">Board &amp; Chips</button>
+      <button class="small" id="histBtn">Move History</button>
+      <button class="small" id="soundBtn">Sound: On</button>
       <div id="legend">Pips left to bear off.<br>Bar checker = 25.<br>Lower is better.</div>
     </div>
   <canvas id="board" width="1120" height="740"></canvas>
@@ -370,6 +395,16 @@
     <button class="wide small" id="editScore">Edit Score</button>
     <button class="wide small" id="resetScore">Reset Match</button>
     <div class="btns"><button class="small" id="menuClose">Close</button></div>
+  </div>
+</div>
+
+<!-- move history -->
+<div id="histModal" class="overlay" hidden>
+  <div id="histCard" class="card">
+    <h3>MOVE HISTORY</h3>
+    <div id="histList"></div>
+    <div class="netnote">Points are numbered from each player's own side.<br>An asterisk marks a hit.</div>
+    <div class="btns"><button class="small" id="histClose">Done</button></div>
   </div>
 </div>
 
@@ -513,6 +548,30 @@ let storeOK = true;
 function saveMatch() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(match)); } catch (e) { storeOK = false; }
 }
+/* the live position, so a refresh (or a host reloading mid-game) doesn't lose it */
+const STATE_KEY = 'backgammon.state.v1';
+function saveState() {
+  try {
+    if (!S) return;
+    const lean = { pts: S.pts, bar: S.bar, off: S.off, turn: S.turn, dice: S.dice,
+                   phase: S.phase, open: S.open, hist: S.hist };
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      t: Date.now(), s: lean,
+      ui: { msg: $('msg').textContent, rl: $('roll').textContent, cr: rollAvailable, cu: undoAvailable },
+      net: net.role ? { role: net.role, code: net.code, seat: myColor } : null,
+    }));
+  } catch (e) {}
+}
+function loadState() {
+  try {
+    const o = JSON.parse(localStorage.getItem(STATE_KEY) || 'null');
+    if (!o || !o.s || !Array.isArray(o.s.pts) || o.s.pts.length !== 24) return null;
+    if (Date.now() - o.t > 24 * 3600 * 1000) return null;      // stale, start fresh
+    return o;
+  } catch (e) { return null; }
+}
+function clearState() { try { localStorage.removeItem(STATE_KEY); } catch (e) {} }
+
 function loadMatch() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -535,7 +594,7 @@ function newGame() {
     bar: { 1: 0, '-1': 0 },
     off: { 1: 0, '-1': 0 },
     turn: 1,
-    dice: [], sel: null, history: [],
+    dice: [], sel: null, history: [], hist: [],
     phase: 'opening',
     open: { w: null, b: null },
   };
@@ -553,6 +612,7 @@ function newGame() {
   viewFlip = desiredFlip();
   renderScore();
   draw();
+  saveState();
 }
 
 function startWith(c, text) {
@@ -602,6 +662,7 @@ function renderScore() {
   $('last').textContent = match.log.length ? match.log[match.log.length - 1].full : 'Match not started';
   $('history').textContent = match.log.slice(-8).map(l => l.short).join('   ');
   pipCache = ''; renderPips();
+  renderLastMove();
 }
 
 /* ---------- rules ---------- */
@@ -695,16 +756,39 @@ function pathsFrom(origin) {
   return res;
 }
 
-const snapshot = () => JSON.stringify({ pts: S.pts, bar: S.bar, off: S.off, dice: S.dice });
-function restore(s) { const o = JSON.parse(s); S.pts = o.pts; S.bar = o.bar; S.off = o.off; S.dice = o.dice; }
+const snapshot = () => JSON.stringify({ pts: S.pts, bar: S.bar, off: S.off, dice: S.dice, hist: S.hist });
+function restore(s) { const o = JSON.parse(s); S.pts = o.pts; S.bar = o.bar; S.off = o.off; S.dice = o.dice; S.hist = o.hist || []; }
+
+/* standard notation: points are numbered 1-24 from the mover's own side */
+const pointNo = (i, c) => c === 1 ? i + 1 : 24 - i;
+function beginTurnLog(c, dice) { S.hist.push({ c, d: dice.slice(), m: [] }); trimHist(); }
+function recordMove(txt) {
+  const t = S.hist[S.hist.length - 1];
+  if (t) t.m.push(txt);
+}
+function trimHist() { if (S.hist.length > 120) S.hist.splice(0, S.hist.length - 120); }
+const turnText = t => (t.c === 1 ? 'Josh' : 'David') + '  ' + t.d.join('-') + (t.m.length ? '  ' + t.m.join(' ') : '  —');
+function lastTurnText() {
+  for (let i = S.hist.length - 1; i >= 0; i--) if (S.hist[i].m.length) return turnText(S.hist[i]);
+  return '';
+}
 
 function applySequence(seq) {
   S.history.push(snapshot());
+  const c = S.turn;
+  const parts = [];
+  let hit = false;
   for (const m of seq) {
-    applyB(live(), S.turn, m);
+    if (m.to !== 'off') { const p = S.pts[m.to]; if (p.c === -c && p.n === 1) hit = true; }
+    parts.push(m.from === 'bar' ? 'bar' : String(pointNo(m.from, c)));
+    applyB(live(), c, m);
     const d = S.dice.find(x => !x.used && x.v === m.die);
     if (d) d.used = true;
   }
+  const last = seq[seq.length - 1];
+  parts.push(last.to === 'off' ? 'off' : String(pointNo(last.to, c)));
+  recordMove(parts.join('/') + (hit ? '*' : ''));
+  sfx.place(); if (hit) sfx.hit();
   setUndo(true);
 }
 
@@ -730,8 +814,10 @@ function endGame(winner) {
   S.phase = 'over';
   msg(name(winner) + ' wins ' + r.pts + ' point' + (r.pts > 1 ? 's' : '') + ' — ' + r.label + '.');
   setRoll(false); setUndo(false);
+  sfx.win();
   renderScore();
   draw();
+  saveState();
 }
 
 function afterMove() {
@@ -747,6 +833,7 @@ function afterMove() {
   }
   msg(name(c) + ' to move — ' + avail().join(', '));
   draw();
+  saveState();
 }
 
 function endTurn() {
@@ -776,6 +863,7 @@ function endTurn() {
   msg(name(S.turn) + ' to roll.');
   renderScore();
   faceCurrentPlayer();
+  saveState();
 }
 
 function faceCurrentPlayer() {
@@ -788,6 +876,7 @@ const d6 = () => 1 + Math.floor(Math.random() * 6);
 const isSheshBesh = v => v.length === 2 && v.includes(6) && v.includes(5);
 
 function openingStep() {
+  sfx.dice();
   if (S.open.w === null) { S.open.w = d6(); openingPrompt(); draw(); return; }
   S.open.b = d6();
   draw();
@@ -803,6 +892,7 @@ function openingStep() {
   S.phase = 'play';
   S.dice = [{ v: w, used: false }, { v: b, used: false }];
   S.history = [];
+  beginTurnLog(winner, [w, b]);
   $('roll').textContent = 'Roll';
   setRoll(false);
   msg(name(winner) + ' wins the opening roll (' + w + '–' + b + ') and plays ' + w + ' and ' + b + '.');
@@ -818,6 +908,8 @@ function roll() {
                    : [{ v: a, used: false }, { v: b, used: false }];
   S.open = { w: null, b: null };
   S.history = [];
+  beginTurnLog(S.turn, [a, b]);
+  sfx.dice();
   setRoll(false); setUndo(false);
   const tag = a === b ? ' (doubles)' : '';
   if (a === 6 && b === 6) flash('double6');
@@ -830,6 +922,7 @@ function roll() {
   }
   msg(name(S.turn) + ' rolled ' + a + '–' + b + tag + '.');
   draw();
+  saveState();
 }
 
 /* ---------- actions (single funnel so the network can replay them) ---------- */
@@ -843,7 +936,7 @@ function applyAct(a, who) {
     case 'move':    doMove(a.from, a.to, who); break;
     case 'undo':    doUndo(who); break;
     case 'new':     newGame(); break;
-    case 'reset':   match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; saveMatch(); newGame(); break;
+    case 'reset':   match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; saveMatch(); clearState(); newGame(); break;
     case 'starter': doStarter(a.v); break;
     case 'score':   doEditScore(a.w, a.b, a.g); break;
   }
@@ -1165,9 +1258,9 @@ function startHello() {
   net.helloTimer = setInterval(() => {
     if (net.paired) { stopHello(); return; }
     if (Date.now() - net.joinedAt > GIVE_UP_MS) {
-      stopHello();
-      netStatus('No host answered for code ' + net.code + '. Check the code, or ask them to create the game again.', 'err');
-      return;
+      // keep knocking, just quietly — this is how we survive the host reloading
+      netStatus('Waiting for ' + net.code + ' — the host may be reconnecting.', 'wait');
+      if ((Date.now() - net.joinedAt) % 8000 > HELLO_MS) return;
     }
     relaySend({ t: 'hello' });
   }, HELLO_MS);
@@ -1188,12 +1281,12 @@ function startWatch() {
 function stopWatch() { clearInterval(net.watchTimer); net.watchTimer = null; }
 
 /* ---------- host / join ---------- */
-function hostGame(seat) {
+function hostGame(seat, fixedCode) {
   leaveNet(true);
   myColor = seat;
   net.role = 'host';
   net.guestSeat = -seat;
-  net.code = roomCode();
+  net.code = fixedCode || roomCode();
   net.topic = topicFor(net.code);
   net.id = randomId();
   net.closed = false;
@@ -1261,6 +1354,7 @@ function statePayload() {
     d: S.dice.map(x => (x.used ? -x.v : x.v)),          // negative = already played
     op: [S.open.w, S.open.b],
     m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
+    h: S.hist.slice(-8), hn: S.hist.length,
     msg: $('msg').textContent,
     rl: $('roll').textContent,
     cr: rollAvailable, cu: undoAvailable,
@@ -1284,8 +1378,23 @@ function applyState(p) {
   S.dice = p.d.map(v => ({ v: Math.abs(v), used: v < 0 }));
   S.open = { w: p.op[0], b: p.op[1] };
   S.sel = null; S.history = [];
+
+  // append whatever turns we haven't seen; after a reconnect just take the tail
+  const tail = p.h || [], total = p.hn || 0, have = S.hist.length;
+  if (total > have) {
+    const tailStart = total - tail.length;
+    if (tailStart <= have) S.hist = S.hist.concat(tail.slice(have - tailStart));
+    else S.hist = tail.slice();
+  } else if (total < have) S.hist = tail.slice();
+
+  const grew = total > have;
   match = { W: p.m.W, B: p.m.B, game: p.m.g, lastWinner: p.m.lw, log: p.m.l || [] };
   saveMatch();
+  if (grew) {
+    const last = S.hist[S.hist.length - 1];
+    if (last && last.m.length) { sfx.place(); if (last.m.join(' ').includes('*')) sfx.hit(); }
+    else sfx.dice();
+  }
   msg(p.msg);
   $('roll').textContent = p.rl;
   setRoll(p.cr); setUndo(p.cu);
@@ -1309,6 +1418,7 @@ function toast(text, warn) {
 function announcePaired() {
   $('netModal').hidden = true;                 // get the lobby out of the way
   $('startModal').hidden = true;
+  sfx.join();
   toast('Connected — you are ' + name(myColor) + '. ' +
         (S.turn === myColor ? 'You go first.' : name(-myColor) + ' goes first.'));
   refit();
@@ -1940,6 +2050,7 @@ function draw() {
     else drawShesh(p);
   }
   renderPips();
+  renderLastMove();
   gate();
   broadcast();
 }
@@ -1997,6 +2108,116 @@ window.addEventListener('resize', refit);
 window.addEventListener('orientationchange', () => setTimeout(refit, 250));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
 
+
+
+/* =======================================================================
+   SOUND — synthesised with WebAudio, so there are no files to host
+   ======================================================================= */
+const SOUND_KEY = 'backgammon.sound.v1';
+let soundOn = true, audioCtx = null;
+function loadSound() { try { soundOn = localStorage.getItem(SOUND_KEY) !== 'off'; } catch (e) {} }
+function saveSound() { try { localStorage.setItem(SOUND_KEY, soundOn ? 'on' : 'off'); } catch (e) {} }
+
+function ac() {
+  if (!soundOn) return null;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { return null; }
+  return audioCtx;
+}
+let noiseBuffer = null;
+function noise(a) {
+  if (noiseBuffer) return noiseBuffer;
+  const n = Math.floor(a.sampleRate * 0.4);
+  const b = a.createBuffer(1, n, a.sampleRate);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  noiseBuffer = b;
+  return b;
+}
+/* one filtered noise burst — the building block for clicks and clacks */
+function burst(a, t, dur, freq, q, gain, type) {
+  const src = a.createBufferSource(); src.buffer = noise(a);
+  const f = a.createBiquadFilter(); f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(a.destination);
+  src.start(t); src.stop(t + dur + 0.02);
+}
+function tone(a, t, dur, freq, gain, type) {
+  const o = a.createOscillator(); o.type = type || 'sine'; o.frequency.value = freq;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(gain, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+const sfx = {
+  dice() {                                    // rattle then two clacks on the board
+    const a = ac(); if (!a) return;
+    const t = a.currentTime;
+    for (let i = 0; i < 7; i++) burst(a, t + i * 0.032 + Math.random() * 0.012, 0.05, 1900 + Math.random() * 1400, 2.5, 0.1);
+    burst(a, t + 0.30, 0.09, 850, 1.6, 0.28);
+    burst(a, t + 0.40, 0.10, 620, 1.4, 0.24);
+  },
+  place() {                                   // checker set down on the point
+    const a = ac(); if (!a) return;
+    const t = a.currentTime;
+    burst(a, t, 0.055, 1250, 1.8, 0.2);
+    tone(a, t, 0.06, 320, 0.05, 'triangle');
+  },
+  hit() {                                     // a blot sent to the bar
+    const a = ac(); if (!a) return;
+    const t = a.currentTime;
+    burst(a, t, 0.16, 220, 0.9, 0.34, 'lowpass');
+    tone(a, t, 0.2, 150, 0.16, 'triangle');
+    tone(a, t + 0.03, 0.16, 96, 0.12, 'sine');
+  },
+  win() {
+    const a = ac(); if (!a) return;
+    const t = a.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(a, t + i * 0.11, 0.42, f, 0.16, 'triangle'));
+  },
+  join() {
+    const a = ac(); if (!a) return;
+    const t = a.currentTime;
+    tone(a, t, 0.22, 659.25, 0.13, 'sine');
+    tone(a, t + 0.12, 0.3, 987.77, 0.12, 'sine');
+  },
+};
+
+
+/* ---------- move history ---------- */
+function renderHistory() {
+  const box = $('histList');
+  if (!S.hist.length) { box.innerHTML = '<div class="none">No moves yet.</div>'; return; }
+  box.innerHTML = S.hist.map((t, i) =>
+    '<div class="row"><span class="no">' + (i + 1) + '.</span>' +
+    '<span class="pl ' + (t.c === 1 ? 'j' : 'd') + '">' + (t.c === 1 ? 'Josh' : 'David') + '</span>' +
+    '<span class="mv">' + t.d.join('-') + '</span>' +
+    '<span class="mv">' + (t.m.length ? t.m.join('  ') : '—') + '</span></div>').join('');
+  box.scrollTop = box.scrollHeight;
+}
+function renderLastMove() { $('lastMove').textContent = lastTurnText(); }
+
+$('histBtn').onclick = () => { renderHistory(); $('histModal').hidden = false; };
+$('histClose').onclick = () => { $('histModal').hidden = true; };
+$('histModal').addEventListener('click', e => { if (e.target === $('histModal')) $('histModal').hidden = true; });
+
+/* ---------- sound toggle ---------- */
+function renderSoundBtn() { $('soundBtn').textContent = 'Sound: ' + (soundOn ? 'On' : 'Off'); }
+$('soundBtn').onclick = () => {
+  soundOn = !soundOn;
+  saveSound();
+  renderSoundBtn();
+  if (soundOn) sfx.place();          // a click so you can hear it came back
+  else if (audioCtx) { try { audioCtx.suspend(); } catch (e) {} }
+};
 
 /* ---------- theme picker ---------- */
 function miniChecker(g, x, y, r, k) {
@@ -2098,11 +2319,43 @@ $('startOnline').onclick = () => {
 
 /* ---------- boot ---------- */
 loadTheme();
+loadSound();
 loadMatch();
 saveMatch();
+
+/* read the snapshot before newGame() writes a fresh one over it */
+const resume = loadState();
+
 newGame();
 showTab('host');
 netStatus('', '');
+renderSoundBtn();
+if (resume && resume.s.phase !== 'over') {
+  const r = resume.s;
+  S.pts = r.pts; S.bar = r.bar; S.off = r.off; S.turn = r.turn;
+  S.dice = r.dice || []; S.phase = r.phase; S.open = r.open || { w: null, b: null };
+  S.hist = r.hist || []; S.sel = null; S.history = [];
+  if (resume.ui) {
+    msg(resume.ui.msg || '');
+    $('roll').textContent = resume.ui.rl || 'Roll';
+    setRoll(!!resume.ui.cr); setUndo(false);
+  }
+  $('startModal').hidden = true;
+  const sess = resume.net;
+  if (sess && sess.role === 'host' && sess.code) {
+    hostGame(sess.seat, sess.code);            // same code, so the guest reconnects on its own
+    toast('Game restored — still hosting ' + sess.code);
+  } else if (sess && sess.role === 'guest' && sess.code) {
+    joinGame(sess.code);
+    toast('Game restored — rejoining ' + sess.code);
+  } else {
+    myColor = null;
+    toast('Game restored');
+  }
+  viewFlip = desiredFlip();
+  renderScore();
+  draw();
+}
 if (!storeOK) $('legend').innerHTML = 'Pips left to bear off.<br>Bar checker = 25.<br><span style="color:#c07a5a">Score can\'t be saved in this browser.</span>';
 
 const joinParam = new URLSearchParams(location.search).get('join');
