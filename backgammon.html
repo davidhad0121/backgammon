@@ -214,13 +214,15 @@
   @media (max-height: 620px) and (orientation: landscape) {
     body { padding: 3px; }
     #stage {
-      gap: 3px; width: 100%; height: 100%;
-      grid-template-columns: 118px 1fr;
-      grid-template-rows: auto auto 1fr;
-      grid-template-areas: "score board" "side board" "panel board";
+      gap: 4px; width: 100%; height: 100%;
+      grid-template-columns: 110px auto 110px;
+      grid-template-rows: auto 1fr;
+      grid-template-areas: "score board panel" "side board panel";
+      justify-content: center; align-content: center;   /* keep the columns hugging the board */
     }
     #hint { display: none; }
     #board { align-self: center; justify-self: center; }
+    #side { align-self: start; }
 
     #score { flex-direction: column; gap: 3px; padding: 4px; }
     .plate { width: 100%; padding: 2px 6px; }
@@ -237,9 +239,12 @@
     .pip .v { font-size: 15px; margin-left: auto; }
     #netpill { font-size: 7px; padding: 3px; letter-spacing: .8px; }
 
-    #panel { align-self: end; flex-direction: column; align-items: stretch; gap: 4px; padding: 4px; }
-    #msg { font-size: 9.5px; line-height: 1.3; text-align: center; order: -1; }
-    #roll { width: 100%; font-size: 13px; padding: 9px 4px; min-height: 38px; }
+    #panel {
+      flex-direction: column; align-items: stretch; justify-content: center;
+      gap: 5px; padding: 6px 5px;
+    }
+    #msg { font-size: 9.5px; line-height: 1.35; text-align: center; order: -1; flex: 0 0 auto; }
+    #roll { width: 100%; font-size: 13px; padding: 10px 4px; min-height: 40px; }
     #undo, #menuBtn { flex: 1; min-height: 34px; padding: 7px 4px; font-size: 10.5px; margin: 0; }
     #panel .pair { display: flex; gap: 4px; }
   }
@@ -1729,7 +1734,7 @@ function fitBoard() {
   if (mode === 'phone-landscape') {
     // the board spans every row of the grid, so only the page padding costs height
     availH = vh - pad;
-    availW = vw - pad - side.offsetWidth - gap;
+    availW = vw - pad - side.offsetWidth - $('panel').offsetWidth - gap * 2;
   } else if (mode === 'portrait') {
     availH = vh - pad - $('score').offsetHeight - $('panel').offsetHeight - side.offsetHeight - gap * 4;
     availW = vw - pad;
