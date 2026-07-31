@@ -91,7 +91,7 @@
     position: fixed; inset: 0; background: rgba(10,7,4,.8);
     display: flex; align-items: center; justify-content: center; z-index: 9; padding: 16px;
   }
-  .overlay[hidden] { display: none; }
+  [hidden] { display: none !important; }   /* beats the display rules below */
   .card {
     background: #241a12; border: 1px solid #6b4c2a; border-radius: 9px;
     padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
@@ -112,7 +112,7 @@
   .seg { display: flex; gap: 7px; }
   .seg button { flex: 1; }
   .netbox { background: #1b130d; border: 1px solid #372a1c; border-radius: 6px; padding: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-  #codeBig { font-size: 40px; letter-spacing: 11px; color: #f0d9a0; text-indent: 11px; line-height: 1; }
+  #codeBig { font-size: 34px; letter-spacing: 8px; color: #f0d9a0; text-indent: 11px; line-height: 1; }
   #qr { background: #f3ead6; padding: 8px; border-radius: 6px; line-height: 0; min-height: 40px; }
   #qr svg, #qr img { display: block; width: 168px; height: 168px; image-rendering: pixelated; }
   #joinLink {
@@ -120,7 +120,7 @@
     background: #14100c; color: #b09a76; border: 1px solid #372a1c; border-radius: 4px; padding: 6px;
   }
   #codeIn {
-    width: 100%; text-align: center; font-size: 27px; letter-spacing: 9px; text-indent: 9px;
+    width: 100%; text-align: center; font-size: 24px; letter-spacing: 7px; text-indent: 7px;
     text-transform: uppercase; padding: 9px;
   }
   #netStatus { font-size: 12px; color: #b09a76; text-align: center; min-height: 17px; }
@@ -219,9 +219,9 @@
     </div>
 
     <div id="joinPane" class="netbox" hidden>
-      <input id="codeIn" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+      <input id="codeIn" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false">
       <button class="gold" id="btnJoin">Join game</button>
-      <div class="netnote">Ask the host for the 4-character code,<br>or just open the link they send you.</div>
+      <div class="netnote">Ask the host for the code they were given,<br>or just open the link they send you.</div>
     </div>
 
     <div id="netStatus"></div>
@@ -625,13 +625,13 @@ function roll() {
 
 /* ---------- actions (single funnel so the network can replay them) ---------- */
 function act(a) {
-  if (net.role === 'guest') { netSend({ t: 'act', a }); return; }
+  if (net.role === 'guest') { relaySend({ t: 'act', a }); return; }
   applyAct(a, myColor);
 }
 function applyAct(a, who) {
   switch (a.type) {
     case 'roll':    doRoll(who); break;
-    case 'hit':     boardHit(a.hit, who); break;
+    case 'move':    doMove(a.from, a.to, who); break;
     case 'undo':    doUndo(who); break;
     case 'new':     newGame(); break;
     case 'reset':   match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; saveMatch(); newGame(); break;
@@ -684,37 +684,59 @@ function doEditScore(w, b, g) {
   draw();
 }
 
-function boardHit(hit, who) {
-  if (S.phase !== 'play' || spin || avail().length === 0) return;
+/* the host settles every move; it only needs the origin and destination, and
+   works the path out itself, so a bad request from the wire can't do anything */
+function doMove(from, to, who) {
+  if (S.phase !== 'play') return;
+  if (who !== null && S.turn !== who) return;
+  if (from === undefined || from === null || to === undefined) return;
+  const paths = pathsFrom(from);
+  if (!paths.has(to)) return;
+  applySequence(paths.get(to));
+  S.sel = null;
+  afterMove();
+}
+
+/* ---------- input ----------
+   Picking a checker up is purely visual, so it stays local and feels instant
+   even online. Only the completed move travels. */
+function localClick(hit) {
+  if (!S || S.phase !== 'play' || spin || avail().length === 0) return;
   const c = S.turn;
-  if (who !== null && who !== c) return;
+  if (myColor !== null && c !== myColor) return;
+
+  const reselect = () => {
+    if (typeof hit === 'number' && S.bar[c] === 0 && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+  };
 
   if (S.sel === null) {
     if (S.bar[c] > 0) { if (hit === 'bar') { S.sel = 'bar'; draw(); } return; }
-    if (typeof hit === 'number' && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+    reselect();
     return;
   }
 
   const paths = pathsFrom(S.sel);
+  const target = hit === S.sel ? (paths.has('off') ? 'off' : null) : (paths.has(hit) ? hit : null);
 
-  if (hit === S.sel) {
-    if (paths.has('off')) { applySequence(paths.get('off')); S.sel = null; afterMove(); }
-    else { S.sel = null; draw(); }
+  if (target === null) {
+    if (hit === S.sel) { S.sel = null; draw(); return; }   // tapped it again with nowhere to go
+    reselect();
     return;
   }
-  if (paths.has(hit)) { applySequence(paths.get(hit)); S.sel = null; afterMove(); return; }
-  if (typeof hit === 'number' && S.bar[c] === 0 && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+
+  const from = S.sel;
+  S.sel = null;
+  if (net.role === 'guest') { draw(); relaySend({ t: 'act', a: { type: 'move', from, to: target } }); return; }
+  applySequence(paths.get(target));
+  afterMove();
 }
 
-/* ---------- input ---------- */
 cv.addEventListener('click', e => {
-  if (!S || S.phase !== 'play' || spin) return;
-  if (myColor !== null && S.turn !== myColor) return;
   const r = cv.getBoundingClientRect();
   const x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
   const hit = hitTest(x, y);
   if (hit === null) return;
-  act({ type: 'hit', hit });
+  localClick(hit);
 });
 
 function hitTest(x, y) {
@@ -759,35 +781,41 @@ document.addEventListener('keydown', e => {
 });
 
 /* =======================================================================
-   ONLINE PLAY — peer-to-peer over WebRTC, host is authoritative
+   ONLINE PLAY — relayed over ntfy.sh, host is authoritative.
+
+   WebRTC was the original design, but a VPN or restrictive NAT leaves it
+   with no viable candidate pair and the data channel never opens. A plain
+   WebSocket relay traverses anything that allows HTTPS. The position is
+   tiny and the game is turn-based, so the extra hop costs nothing.
    ======================================================================= */
+const RELAY_HTTP = 'https://ntfy.sh/';
+const RELAY_WS   = 'wss://ntfy.sh/';
+const HELLO_MS = 2500, HEARTBEAT_MS = 12000, PEER_TIMEOUT_MS = 40000, GIVE_UP_MS = 25000;
+
 const net = {
-  role: null,        // null | 'host' | 'guest'
-  peer: null,
-  conn: null,
-  code: null,
+  role: null,          // null | 'host' | 'guest'
+  code: null, topic: null,
+  id: null,            // random per tab, so we ignore our own messages
+  ws: null, wsOpen: false,
   guestSeat: null,
-  fx: null,          // { kind, info, id } — replayed on the guest
-  fxSeq: 0,
-  lastFxSeen: 0,
+  paired: false,
+  lastSeen: 0,
   lastSent: '',
+  fx: null, fxSeq: 0, lastFxSeen: 0,
+  closed: false,
+  helloTimer: null, hbTimer: null, watchTimer: null, retryTimer: null, joinedAt: 0,
 };
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I/O/0/1
-const roomCode = () => Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
-const peerIdFor = code => 'bkgmn-jd-' + code;
+const roomCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+const topicFor = code => 'bkgmnjd' + code.toLowerCase();
+const randomId = () => Math.random().toString(36).slice(2, 10);
 
-const PEER_SRCS = [
-  'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
-  'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
-];
 const QR_SRCS = [
   'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js',
   'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js',
   'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js',
 ];
-
 function loadScript(srcs, ready) {
   if (ready()) return Promise.resolve(true);
   return new Promise(resolve => {
@@ -796,7 +824,7 @@ function loadScript(srcs, ready) {
       if (i >= srcs.length) return resolve(false);
       const s = document.createElement('script');
       s.src = srcs[i++];
-      s.onload = () => resolve(ready() ? true : (tryNext(), false));
+      s.onload = () => { if (ready()) resolve(true); else tryNext(); };
       s.onerror = tryNext;
       document.head.appendChild(s);
     };
@@ -807,14 +835,11 @@ function loadScript(srcs, ready) {
 function netStatus(text, cls) {
   $('netStatus').textContent = text;
   const pill = $('netpill');
-  pill.className = cls || '';
-  if (net.role && net.conn && net.conn.open && myColor !== null) {
+  if (net.role && net.paired && myColor !== null) {
     pill.textContent = 'ONLINE · ' + name(myColor).toUpperCase();
     pill.className = 'on';
   } else if (net.role) {
-    pill.textContent = net.role === 'host'
-      ? (net.code ? 'CODE ' + net.code : 'CONNECTING')
-      : (cls === 'err' ? 'DISCONNECTED' : 'CONNECTING');
+    pill.textContent = net.code ? 'CODE ' + net.code : 'CONNECTING';
     pill.className = cls || 'wait';
   } else {
     pill.textContent = 'SAME DEVICE';
@@ -845,164 +870,161 @@ async function showQR(url) {
   } catch (e) { box.hidden = true; }
 }
 
-/* --- host --- */
-async function hostGame(seat, attempt) {
-  netStatus('Loading connection library…', 'wait');
-  const ok = await loadScript(PEER_SRCS, () => typeof window.Peer === 'function');
-  if (!ok) { netStatus('Could not load the connection library — check your network.', 'err'); return; }
+/* ---------- relay plumbing ---------- */
+function relaySend(obj) {
+  if (!net.topic) return;
+  obj.from = net.id;
+  fetch(RELAY_HTTP + net.topic, { method: 'POST', body: JSON.stringify(obj) })
+    .then(r => { if (!r.ok && r.status === 429) netStatus('Relay is rate limiting us — slow down a moment.', 'err'); })
+    .catch(() => {});
+}
 
+function relayOpen() {
+  clearTimeout(net.retryTimer);
+  try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
+  const ws = new WebSocket(RELAY_WS + net.topic + '/ws');
+  net.ws = ws;
+
+  ws.onopen = () => {
+    net.wsOpen = true;
+    if (net.role === 'guest') { startHello(); netStatus('Looking for the host…', 'wait'); }
+    else netStatus('Waiting for your opponent to join…', 'wait');
+    startHeartbeat();
+    gate();
+  };
+
+  ws.onmessage = ev => {
+    let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (d.event !== 'message') return;                 // skip open/keepalive frames
+    let m; try { m = JSON.parse(d.message); } catch (e) { return; }
+    if (!m || m.from === net.id) return;               // our own echo
+    net.lastSeen = Date.now();
+    handleRelay(m);
+  };
+
+  ws.onclose = () => {
+    net.wsOpen = false;
+    if (net.closed) return;
+    netStatus('Relay dropped — reconnecting…', 'wait');
+    net.retryTimer = setTimeout(relayOpen, 2000);
+  };
+  ws.onerror = () => {};
+}
+
+function handleRelay(m) {
+  if (m.t === 'bye') { peerGone(); return; }
+  if (m.t === 'ping') { if (!net.paired && net.role === 'guest') relaySend({ t: 'hello' }); return; }
+
+  if (net.role === 'host') {
+    if (m.t === 'hello') {                              // new arrival, or a rejoin after a refresh
+      stopWatch(); net.paired = true;
+      relaySend({ t: 'welcome', seat: net.guestSeat });
+      net.lastSent = '';
+      broadcast(true);
+      netStatus('Connected — you are ' + name(myColor) + '.', 'on');
+      startWatch(); gate(); draw();
+      return;
+    }
+    if (m.t === 'act') { applyAct(m.a, net.guestSeat); broadcast(); return; }
+    return;
+  }
+
+  if (m.t === 'welcome') {
+    stopHello();
+    net.paired = true;
+    myColor = m.seat;
+    netStatus('Connected — you are ' + name(myColor) + '.', 'on');
+    viewFlip = desiredFlip();
+    startWatch(); gate(); draw();
+    return;
+  }
+  if (m.t === 'state') { net.paired = true; applyState(m); }
+}
+
+function peerGone() {
+  if (!net.paired) return;
+  net.paired = false;
+  if (net.role === 'host') netStatus('Opponent left. They can rejoin with code ' + net.code + '.', 'wait');
+  else { netStatus('Host disconnected. Waiting for them to come back…', 'wait'); startHello(); }
+  gate(); draw();
+}
+
+function startHello() {
+  stopHello();
+  net.joinedAt = Date.now();
+  relaySend({ t: 'hello' });
+  net.helloTimer = setInterval(() => {
+    if (net.paired) { stopHello(); return; }
+    if (Date.now() - net.joinedAt > GIVE_UP_MS) {
+      stopHello();
+      netStatus('No host answered for code ' + net.code + '. Check the code, or ask them to create the game again.', 'err');
+      return;
+    }
+    relaySend({ t: 'hello' });
+  }, HELLO_MS);
+}
+function stopHello() { clearInterval(net.helloTimer); net.helloTimer = null; }
+
+function startHeartbeat() {
+  clearInterval(net.hbTimer);
+  net.hbTimer = setInterval(() => { if (net.role) relaySend({ t: 'ping' }); }, HEARTBEAT_MS);
+}
+function startWatch() {
+  stopWatch();
+  net.lastSeen = Date.now();
+  net.watchTimer = setInterval(() => {
+    if (net.paired && Date.now() - net.lastSeen > PEER_TIMEOUT_MS) peerGone();
+  }, 5000);
+}
+function stopWatch() { clearInterval(net.watchTimer); net.watchTimer = null; }
+
+/* ---------- host / join ---------- */
+function hostGame(seat) {
   leaveNet(true);
   myColor = seat;
   net.role = 'host';
   net.guestSeat = -seat;
   net.code = roomCode();
+  net.topic = topicFor(net.code);
+  net.id = randomId();
+  net.closed = false;
 
-  const peer = new window.Peer(peerIdFor(net.code), { debug: 0 });
-  net.peer = peer;
-
-  peer.on('open', () => {
-    $('codeBig').hidden = false; $('codeBig').textContent = net.code;
-    const url = joinURL(net.code);
-    $('joinLink').hidden = false; $('joinLink').value = url;
-    $('btnCopy').hidden = false; $('hostNote').hidden = false;
-    showQR(url);
-    netStatus('Waiting for your opponent to join…', 'wait');
-    viewFlip = desiredFlip(); gate(); draw();
-  });
-
-  peer.on('connection', conn => {
-    if (net.conn && net.conn.open) { try { conn.close(); } catch (e) {} return; }
-    net.conn = conn;
-    wireConn(conn);
-  });
-
-  peer.on('error', err => {
-    if (err && err.type === 'unavailable-id' && (attempt || 0) < 5) { hostGame(seat, (attempt || 0) + 1); return; }
-    netStatus('Connection error: ' + ((err && err.type) || 'unknown'), 'err');
-  });
-
-  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+  $('codeBig').hidden = false; $('codeBig').textContent = net.code;
+  const url = joinURL(net.code);
+  $('joinLink').hidden = false; $('joinLink').value = url;
+  $('btnCopy').hidden = false; $('hostNote').hidden = false;
+  $('btnLeave').hidden = false;
+  showQR(url);
+  relayOpen();
+  viewFlip = desiredFlip();
+  gate(); draw();
 }
 
-/* --- guest --- */
-async function joinGame(code) {
-  code = (code || '').trim().toUpperCase();
-  if (code.length !== 4) { netStatus('Enter the 4-character code.', 'err'); return; }
-  netStatus('Loading connection library…', 'wait');
-  const ok = await loadScript(PEER_SRCS, () => typeof window.Peer === 'function');
-  if (!ok) { netStatus('Could not load the connection library — check your network.', 'err'); return; }
-
+function joinGame(code) {
+  code = (code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 4) { netStatus('Enter the code the host gave you.', 'err'); return; }
   leaveNet(true);
   net.role = 'guest';
   net.code = code;
-  netStatus('Connecting to ' + code + '…', 'wait');
-
-  const peer = new window.Peer({ debug: 0 });
-  net.peer = peer;
-
-  peer.on('open', () => {
-    const conn = peer.connect(peerIdFor(code), { reliable: true });
-    net.conn = conn;
-    wireConn(conn);
-    setTimeout(() => {
-      if (net.role === 'guest' && (!net.conn || !net.conn.open))
-        netStatus('No answer for code ' + code + '. Check the code, or ask them to create the game again.', 'err');
-    }, 9000);
-  });
-
-  peer.on('error', err => netStatus('Connection error: ' + ((err && err.type) || 'unknown'), 'err'));
-}
-
-function wireConn(conn) {
-  conn.on('open', () => {
-    $('btnLeave').hidden = false;
-    if (net.role === 'host') {
-      conn.send({ t: 'welcome', seat: net.guestSeat });
-      net.lastSent = '';
-      broadcast(true);
-      netStatus('Connected — you are ' + name(myColor) + '.', 'on');
-    } else {
-      netStatus('Connected. Waiting for the board…', 'on');
-    }
-    gate();
-  });
-
-  conn.on('data', d => {
-    if (!d || typeof d !== 'object') return;
-    if (net.role === 'host') {
-      if (d.t === 'act') { applyAct(d.a, net.guestSeat); broadcast(); }
-      return;
-    }
-    if (d.t === 'welcome') {
-      myColor = d.seat;
-      netStatus('Connected — you are ' + name(myColor) + '.', 'on');
-      viewFlip = desiredFlip();
-      gate();
-      return;
-    }
-    if (d.t === 'state') applyState(d);
-  });
-
-  const drop = () => {
-    net.conn = null;
-    if (net.role === 'host') netStatus('Opponent disconnected. They can rejoin with code ' + net.code + '.', 'wait');
-    else netStatus('Disconnected from the host. Press Join to reconnect.', 'err');
-    gate(); draw();
-  };
-  conn.on('close', drop);
-  conn.on('error', drop);
-}
-
-function netSend(obj) {
-  if (net.conn && net.conn.open) { try { net.conn.send(obj); } catch (e) {} }
-}
-
-/* host → guest: the whole position. It's tiny, so there's nothing to reconcile. */
-function statePayload() {
-  return {
-    t: 'state',
-    s: {
-      pts: S.pts, bar: S.bar, off: S.off, turn: S.turn,
-      dice: S.dice, sel: S.sel, phase: S.phase, open: S.open,
-    },
-    m: match,
-    msg: $('msg').textContent,
-    rollLabel: $('roll').textContent,
-    canRoll: rollAvailable,
-    canUndo: undoAvailable,
-    fx: net.fx,
-  };
-}
-function broadcast(force) {
-  if (net.role !== 'host' || !net.conn || !net.conn.open) return;
-  const p = statePayload();
-  const key = JSON.stringify(p);
-  if (!force && key === net.lastSent) return;
-  net.lastSent = key;
-  try { net.conn.send(p); } catch (e) {}
-}
-
-function applyState(p) {
-  const s = p.s;
-  S.pts = s.pts; S.bar = s.bar; S.off = s.off; S.turn = s.turn;
-  S.dice = s.dice; S.sel = s.sel; S.phase = s.phase; S.open = s.open;
-  S.history = [];
-  match = p.m;
-  saveMatch();
-  msg(p.msg);
-  $('roll').textContent = p.rollLabel;
-  setRoll(p.canRoll); setUndo(p.canUndo);
-  renderScore();
-  if (p.fx && p.fx.id > net.lastFxSeen) { net.lastFxSeen = p.fx.id; flash(p.fx.kind, p.fx.info); }
-  viewFlip = desiredFlip();
-  draw();
+  net.topic = topicFor(code);
+  net.id = randomId();
+  net.closed = false;
+  $('btnLeave').hidden = false;
+  netStatus('Connecting…', 'wait');
+  relayOpen();
+  gate();
 }
 
 function leaveNet(quiet) {
-  try { if (net.conn) net.conn.close(); } catch (e) {}
-  try { if (net.peer) net.peer.destroy(); } catch (e) {}
-  net.role = null; net.peer = null; net.conn = null; net.code = null;
-  net.guestSeat = null; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
+  if (net.role && net.paired) relaySend({ t: 'bye' });
+  net.closed = true;
+  stopHello(); stopWatch();
+  clearInterval(net.hbTimer); net.hbTimer = null;
+  clearTimeout(net.retryTimer); net.retryTimer = null;
+  try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
+  net.ws = null; net.wsOpen = false;
+  net.role = null; net.code = null; net.topic = null; net.guestSeat = null;
+  net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1013,8 +1035,58 @@ function leaveNet(quiet) {
     gate(); draw();
   }
 }
+window.addEventListener('beforeunload', () => {
+  if (net.role && net.topic) {
+    try { navigator.sendBeacon(RELAY_HTTP + net.topic, JSON.stringify({ t: 'bye', from: net.id })); } catch (e) {}
+  }
+});
 
-/* lobby wiring */
+/* ---------- state sync (compact: the whole position fits in ~1 KB) ---------- */
+function statePayload() {
+  return {
+    t: 'state',
+    p: S.pts.map(x => x.c * x.n),                       // one signed count per point
+    b: [S.bar[1], S.bar[-1]],
+    o: [S.off[1], S.off[-1]],
+    tu: S.turn, ph: S.phase,
+    d: S.dice.map(x => (x.used ? -x.v : x.v)),          // negative = already played
+    op: [S.open.w, S.open.b],
+    m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
+    msg: $('msg').textContent,
+    rl: $('roll').textContent,
+    cr: rollAvailable, cu: undoAvailable,
+    fx: net.fx,
+  };
+}
+function broadcast(force) {
+  if (net.role !== 'host' || !net.topic) return;
+  const p = statePayload();
+  const key = JSON.stringify(p);
+  if (!force && key === net.lastSent) return;
+  net.lastSent = key;
+  relaySend(p);
+}
+
+function applyState(p) {
+  S.pts = p.p.map(v => ({ c: v > 0 ? 1 : (v < 0 ? -1 : 0), n: Math.abs(v) }));
+  S.bar = { 1: p.b[0], '-1': p.b[1] };
+  S.off = { 1: p.o[0], '-1': p.o[1] };
+  S.turn = p.tu; S.phase = p.ph;
+  S.dice = p.d.map(v => ({ v: Math.abs(v), used: v < 0 }));
+  S.open = { w: p.op[0], b: p.op[1] };
+  S.sel = null; S.history = [];
+  match = { W: p.m.W, B: p.m.B, game: p.m.g, lastWinner: p.m.lw, log: p.m.l || [] };
+  saveMatch();
+  msg(p.msg);
+  $('roll').textContent = p.rl;
+  setRoll(p.cr); setUndo(p.cu);
+  renderScore();
+  if (p.fx && p.fx.id > net.lastFxSeen) { net.lastFxSeen = p.fx.id; flash(p.fx.kind, p.fx.info); }
+  viewFlip = desiredFlip();
+  draw();
+}
+
+/* ---------- lobby wiring ---------- */
 function showTab(which) {
   $('hostPane').hidden = which !== 'host';
   $('joinPane').hidden = which !== 'join';
@@ -1026,7 +1098,7 @@ $('netClose').onclick = () => { $('netModal').hidden = true; };
 $('netModal').addEventListener('click', e => { if (e.target === $('netModal')) $('netModal').hidden = true; });
 $('tabHost').onclick = () => showTab('host');
 $('tabJoin').onclick = () => showTab('join');
-$('btnHost').onclick = () => hostGame(Number($('hostSide').value), 0);
+$('btnHost').onclick = () => hostGame(Number($('hostSide').value));
 $('btnJoin').onclick = () => joinGame($('codeIn').value);
 $('btnLeave').onclick = () => leaveNet(false);
 $('codeIn').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
@@ -1467,7 +1539,7 @@ if (!storeOK) $('legend').innerHTML = 'Pips left to bear off.<br>Bar checker = 2
 const joinParam = new URLSearchParams(location.search).get('join');
 if (joinParam) {
   showTab('join');
-  $('codeIn').value = joinParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  $('codeIn').value = joinParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   $('netModal').hidden = false;
   joinGame($('codeIn').value);
 }
