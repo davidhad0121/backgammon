@@ -2,20 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#14100c">
 <title>Backgammon — Josh vs David</title>
 <style>
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; height: 100dvh; }
   body {
     margin: 0; overflow: hidden;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     background: #14100c;
-    font-family: Georgia, 'Times New Roman', serif; color: #e8dcc8; padding: 8px;
+    font-family: Georgia, 'Times New Roman', serif; color: #e8dcc8;
+    padding: 8px; padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    touch-action: manipulation; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
   }
-  #stage { display: flex; flex-direction: column; gap: 7px; }
+  [hidden] { display: none !important; }
+  #stage { display: flex; flex-direction: column; gap: 7px; max-width: 100%; }
 
-  /* score strip */
+  /* ---------- score strip ---------- */
   #score {
     display: flex; align-items: stretch; gap: 8px;
     background: #241a12; border: 1px solid #4a3826; border-radius: 7px; padding: 6px 8px;
@@ -38,12 +44,12 @@
   #last { font-size: 12px; color: #b09a76; }
   #history { font-size: 10.5px; color: #7d6d56; letter-spacing: .3px; }
 
-  /* board row */
+  /* ---------- board row ---------- */
   #main { display: flex; gap: 8px; align-items: stretch; }
   #side {
     width: 138px; flex: none;
     background: #241a12; border: 1px solid #4a3826; border-radius: 7px;
-    padding: 10px 10px; display: flex; flex-direction: column; gap: 8px;
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
   }
   #side h3 { margin: 0; font-size: 9.5px; letter-spacing: 2.5px; color: #8a7860; font-weight: normal; text-align: center; }
   .pip { background: #1b130d; border: 1px solid #372a1c; border-radius: 5px; padding: 7px 9px; transition: border-color .25s; }
@@ -54,7 +60,7 @@
   #lead { font-size: 10.5px; color: #9c8a70; text-align: center; line-height: 1.4; border-top: 1px solid #372a1c; padding-top: 8px; }
   #netpill {
     font-size: 9.5px; letter-spacing: 1.4px; text-align: center; padding: 5px 4px;
-    border-radius: 4px; border: 1px solid #372a1c; background: #1b130d; color: #7d6d56;
+    border-radius: 4px; border: 1px solid #372a1c; background: #1b130d; color: #7d6d56; white-space: nowrap;
   }
   #netpill.on   { border-color: #3f7a4a; color: #8fd6a2; background: #14200f; }
   #netpill.wait { border-color: #7a6330; color: #e0bc6a; background: #201a0d; }
@@ -63,11 +69,12 @@
 
   canvas { display: block; border-radius: 7px; box-shadow: 0 14px 44px rgba(0,0,0,.8); cursor: pointer; }
 
+  /* ---------- control bar ---------- */
   #panel {
     display: flex; align-items: center; gap: 9px;
     background: #241a12; border: 1px solid #4a3826; border-radius: 6px; padding: 7px 12px;
   }
-  #msg { font-size: 13.5px; flex: 1; }
+  #msg { font-size: 13.5px; flex: 1; min-width: 0; }
   button {
     font-family: inherit; font-size: 12.5px; letter-spacing: .8px;
     background: #6b4c2a; color: #f0e4cc; border: 1px solid #8a683c;
@@ -78,41 +85,48 @@
   button.small { font-size: 10.5px; padding: 6px 9px; letter-spacing: .4px; background: #3c2c1a; border-color: #56412a; }
   button.gold { background: #8a6626; border-color: #b08a3c; }
   button.gold:hover:not(:disabled) { background: #a37b2e; }
+  button.wide { width: 100%; padding: 12px; font-size: 14px; }
+  #roll { font-size: 15px; padding: 9px 26px; background: #8a6626; border-color: #b08a3c; font-weight: bold; }
+  #roll:hover:not(:disabled) { background: #a37b2e; }
+  #menuBtn { margin-left: 6px; }
   select {
-    font-family: inherit; font-size: 10.5px; letter-spacing: .4px;
+    font-family: inherit; font-size: 12px; letter-spacing: .4px;
     background: #3c2c1a; color: #f0e4cc; border: 1px solid #56412a;
-    padding: 6px 7px; border-radius: 4px; cursor: pointer;
+    padding: 7px; border-radius: 4px; cursor: pointer;
   }
   select:disabled { opacity: .3; cursor: default; }
   .hint { font-size: 11px; color: #7d6d56; letter-spacing: .3px; text-align: center; }
 
-  /* modals */
+  /* ---------- overlays ---------- */
   .overlay {
-    position: fixed; inset: 0; background: rgba(10,7,4,.8);
-    display: flex; align-items: center; justify-content: center; z-index: 9; padding: 16px;
+    position: fixed; inset: 0; background: rgba(10,7,4,.82);
+    display: flex; align-items: center; justify-content: center; z-index: 20; padding: 14px;
   }
-  [hidden] { display: none !important; }   /* beats the display rules below */
   .card {
-    background: #241a12; border: 1px solid #6b4c2a; border-radius: 9px;
+    background: #241a12; border: 1px solid #6b4c2a; border-radius: 10px;
     padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
-    box-shadow: 0 22px 60px rgba(0,0,0,.75); max-height: 94vh; overflow-y: auto;
+    box-shadow: 0 22px 60px rgba(0,0,0,.75); max-height: 92dvh; overflow-y: auto; width: 340px; max-width: 100%;
   }
   .card h3 { margin: 0; font-size: 13px; letter-spacing: 3px; color: #c8a870; font-weight: normal; text-align: center; }
   .card label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #d8c8a8; }
   .card input {
     font-family: inherit; font-size: 17px; text-align: right;
-    background: #1b130d; color: #f0e0bc; border: 1px solid #4a3826; border-radius: 4px; padding: 6px 9px;
+    background: #1b130d; color: #f0e0bc; border: 1px solid #4a3826; border-radius: 4px; padding: 8px 9px;
   }
   .card .btns { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
-  #card { width: 300px; }
-  #card input { width: 92px; }
+  #card input { width: 100px; }
+  .sub { font-size: 12px; color: #9c8a70; text-align: center; line-height: 1.5; margin: -4px 0 2px; }
+
+  /* start screen */
+  #startCard h3 { font-size: 17px; letter-spacing: 6px; }
+  #startCard .modes { display: flex; flex-direction: column; gap: 9px; }
 
   /* online lobby */
   #netCard { width: 372px; }
   .seg { display: flex; gap: 7px; }
-  .seg button { flex: 1; }
+  .seg button { flex: 1; padding: 10px; }
   .netbox { background: #1b130d; border: 1px solid #372a1c; border-radius: 6px; padding: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-  #codeBig { font-size: 34px; letter-spacing: 8px; color: #f0d9a0; text-indent: 11px; line-height: 1; }
+  #codeBig { font-size: 34px; letter-spacing: 8px; color: #f0d9a0; text-indent: 8px; line-height: 1; }
   #qr { background: #f3ead6; padding: 8px; border-radius: 6px; line-height: 0; min-height: 40px; }
   #qr svg, #qr img { display: block; width: 168px; height: 168px; image-rendering: pixelated; }
   #joinLink {
@@ -121,11 +135,71 @@
   }
   #codeIn {
     width: 100%; text-align: center; font-size: 24px; letter-spacing: 7px; text-indent: 7px;
-    text-transform: uppercase; padding: 9px;
+    text-transform: uppercase; padding: 11px;
   }
-  #netStatus { font-size: 12px; color: #b09a76; text-align: center; min-height: 17px; }
+  #netStatus { font-size: 12.5px; color: #b09a76; text-align: center; min-height: 17px; }
   .netnote { font-size: 10.5px; color: #7d6d56; line-height: 1.55; text-align: center; }
   .sidechoice { display: flex; gap: 7px; align-items: center; justify-content: center; font-size: 12px; color: #c0ac8c; }
+
+  /* connection toast */
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%) translateY(-16px);
+    top: max(10px, env(safe-area-inset-top)); z-index: 40;
+    background: #16240f; border: 1px solid #4b8a58; color: #a8e6b8;
+    padding: 11px 20px; border-radius: 8px; font-size: 14px; letter-spacing: .5px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.6); opacity: 0; pointer-events: none;
+    transition: opacity .3s, transform .3s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.warn { background: #241a0d; border-color: #8a6a30; color: #e8c887; }
+
+  /* ---------- phones and short screens ---------- */
+  @media (max-width: 900px), (max-height: 560px) {
+    body { padding: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+    #stage { gap: 4px; width: 100%; }
+
+    #score { padding: 4px 5px; gap: 5px; border-radius: 6px; }
+    .plate { min-width: 0; flex: 1; padding: 3px 8px; gap: 6px; }
+    .who { font-size: 11px; gap: 5px; letter-spacing: .5px; }
+    .dot { width: 13px; height: 13px; }
+    .pts { font-size: 19px; }
+    #mid { flex: 0 0 auto; }
+    #games { font-size: 8.5px; letter-spacing: 1.5px; }
+    #last, #history { display: none; }
+    .youtag { font-size: 7px; padding: 1px 3px; }
+
+    #main { flex-direction: column; gap: 4px; }
+    #side {
+      width: 100%; flex-direction: row; align-items: center; gap: 5px;
+      padding: 4px 5px; border-radius: 6px;
+    }
+    #side h3, #legend, #lead, .pip .d { display: none; }
+    .pip { flex: 1; display: flex; align-items: center; gap: 6px; padding: 3px 8px; }
+    .pip .nm { font-size: 9.5px; letter-spacing: .5px; }
+    .pip .v { font-size: 17px; margin-left: auto; }
+    #netpill { font-size: 8px; padding: 4px 6px; }
+
+    #panel { padding: 5px 6px; gap: 6px; border-radius: 6px; }
+    #msg { font-size: 11.5px; }
+    #roll { font-size: 14px; padding: 11px 20px; min-height: 44px; }
+    #undo, #menuBtn { padding: 11px 13px; min-height: 44px; font-size: 12px; }
+    .hint { display: none; }
+
+    .card { padding: 16px 15px; gap: 10px; width: 100%; }
+    #netCard { width: 100%; }
+    #qr svg, #qr img { width: 140px; height: 140px; }
+    #codeBig { font-size: 29px; letter-spacing: 6px; }
+    .card .btns button, .seg button { min-height: 42px; }
+  }
+
+  /* portrait phone: a landscape board gets cramped, so say so */
+  #rotate { display: none; }
+  @media (max-width: 760px) and (orientation: portrait) {
+    #rotate {
+      display: block; font-size: 10.5px; color: #a8916a; text-align: center;
+      background: #241a12; border: 1px solid #4a3826; border-radius: 6px; padding: 5px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -140,6 +214,8 @@
     </div>
     <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span>DAVID<span class="dot b"></span></span></div>
   </div>
+
+  <div id="rotate">Turn your phone sideways for a bigger board</div>
 
   <div id="main">
     <div id="side">
@@ -165,17 +241,43 @@
     <span id="msg"></span>
     <button id="roll">Roll</button>
     <button id="undo" disabled>Undo</button>
-    <button id="newgame">New Game</button>
-    <select id="starter" title="Override who opens this game">
-      <option value="auto">First move: default</option>
-      <option value="1">First move: Josh</option>
-      <option value="-1">First move: David</option>
-    </select>
-    <button class="gold" id="playOnline">Play Online</button>
-    <button class="small" id="editScore">Edit Score</button>
-    <button class="small" id="resetScore">Reset Match</button>
+    <button class="small" id="menuBtn">Menu</button>
   </div>
-  <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off · Play Online for two devices</div>
+  <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
+</div>
+
+<div id="toast"></div>
+
+<!-- start screen -->
+<div id="startModal" class="overlay">
+  <div id="startCard" class="card">
+    <h3>BACKGAMMON</h3>
+    <div class="sub">Josh vs David</div>
+    <div class="modes">
+      <button class="gold wide" id="startLocal">Play on this device</button>
+      <button class="wide" id="startOnline">Play online</button>
+    </div>
+    <div class="netnote">Two players sharing one screen, or one each on separate devices.</div>
+  </div>
+</div>
+
+<!-- menu -->
+<div id="menuModal" class="overlay" hidden>
+  <div class="card">
+    <h3>MENU</h3>
+    <button class="wide" id="newgame">New Game</button>
+    <label>First move
+      <select id="starter" title="Override who opens this game">
+        <option value="auto">Default</option>
+        <option value="1">Josh</option>
+        <option value="-1">David</option>
+      </select>
+    </label>
+    <button class="gold wide" id="playOnline">Play Online</button>
+    <button class="wide small" id="editScore">Edit Score</button>
+    <button class="wide small" id="resetScore">Reset Match</button>
+    <div class="btns"><button class="small" id="menuClose">Close</button></div>
+  </div>
 </div>
 
 <!-- edit score -->
@@ -210,7 +312,7 @@
           <option value="-1">David</option>
         </select>
       </div>
-      <button class="gold" id="btnHost">Create game</button>
+      <button class="gold wide" id="btnHost">Create game</button>
       <div id="codeBig" hidden></div>
       <div id="qr" hidden></div>
       <input id="joinLink" readonly hidden>
@@ -220,7 +322,7 @@
 
     <div id="joinPane" class="netbox" hidden>
       <input id="codeIn" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false">
-      <button class="gold" id="btnJoin">Join game</button>
+      <button class="gold wide" id="btnJoin">Join game</button>
       <div class="netnote">Ask the host for the code they were given,<br>or just open the link they send you.</div>
     </div>
 
@@ -234,6 +336,7 @@
 </div>
 
 <script>
+
 const cv = document.getElementById('board'), ctx = cv.getContext('2d');
 const W = 1120, H = 740;
 const NAMES = { 1: 'Josh', '-1': 'David' };
@@ -753,22 +856,12 @@ function hitTest(x, y) {
 
 $('roll').onclick = () => act({ type: 'roll' });
 $('undo').onclick = () => act({ type: 'undo' });
-$('newgame').onclick = () => act({ type: 'new' });
-$('starter').onchange = e => act({ type: 'starter', v: e.target.value });
-$('resetScore').onclick = () => act({ type: 'reset' });
-
-$('editScore').onclick = () => {
-  $('inW').value = match.W; $('inB').value = match.B; $('inG').value = match.game;
-  $('modal').hidden = false; $('inW').focus(); $('inW').select();
-};
 $('mCancel').onclick = () => { $('modal').hidden = true; };
 $('mSave').onclick = () => {
   const n = el => Number(el.value) || 0;
   act({ type: 'score', w: n($('inW')), b: n($('inB')), g: n($('inG')) });
   $('modal').hidden = true;
-  const btn = $('editScore'), was = btn.textContent;
-  btn.textContent = storeOK ? 'Saved' : 'Not saved';
-  setTimeout(() => { btn.textContent = was; }, 1300);
+  toast(storeOK ? 'Score saved' : 'Score changed, but this browser blocks saving', !storeOK);
 };
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) $('modal').hidden = true; });
 document.addEventListener('keydown', e => {
@@ -917,12 +1010,14 @@ function handleRelay(m) {
 
   if (net.role === 'host') {
     if (m.t === 'hello') {                              // new arrival, or a rejoin after a refresh
+      const wasPaired = net.paired;
       stopWatch(); net.paired = true;
       relaySend({ t: 'welcome', seat: net.guestSeat });
       net.lastSent = '';
       broadcast(true);
       netStatus('Connected — you are ' + name(myColor) + '.', 'on');
       startWatch(); gate(); draw();
+      if (!wasPaired) announcePaired();
       return;
     }
     if (m.t === 'act') { applyAct(m.a, net.guestSeat); broadcast(); return; }
@@ -930,22 +1025,30 @@ function handleRelay(m) {
   }
 
   if (m.t === 'welcome') {
+    const wasPaired = net.paired;
     stopHello();
     net.paired = true;
     myColor = m.seat;
     netStatus('Connected — you are ' + name(myColor) + '.', 'on');
     viewFlip = desiredFlip();
     startWatch(); gate(); draw();
+    if (!wasPaired) announcePaired();
     return;
   }
-  if (m.t === 'state') { net.paired = true; applyState(m); }
+  if (m.t === 'state') {
+    if (myColor === null) { relaySend({ t: 'hello' }); return; }   // seat unknown — ask again
+    const wasPaired = net.paired;
+    net.paired = true;
+    applyState(m);
+    if (!wasPaired) { netStatus('Connected — you are ' + name(myColor) + '.', 'on'); announcePaired(); }
+  }
 }
 
 function peerGone() {
   if (!net.paired) return;
   net.paired = false;
-  if (net.role === 'host') netStatus('Opponent left. They can rejoin with code ' + net.code + '.', 'wait');
-  else { netStatus('Host disconnected. Waiting for them to come back…', 'wait'); startHello(); }
+  if (net.role === 'host') { netStatus('Opponent left. They can rejoin with code ' + net.code + '.', 'wait'); toast('Opponent disconnected — code ' + net.code + ' still works.', true); }
+  else { netStatus('Host disconnected. Waiting for them to come back…', 'wait'); toast('Lost the host — trying to reconnect…', true); startHello(); }
   gate(); draw();
 }
 
@@ -1059,7 +1162,7 @@ function statePayload() {
   };
 }
 function broadcast(force) {
-  if (net.role !== 'host' || !net.topic) return;
+  if (net.role !== 'host' || !net.topic || !net.paired) return;
   const p = statePayload();
   const key = JSON.stringify(p);
   if (!force && key === net.lastSent) return;
@@ -1086,6 +1189,25 @@ function applyState(p) {
   draw();
 }
 
+/* ---------- visible confirmation that two devices are talking ---------- */
+let toastTimer = null;
+function toast(text, warn) {
+  const el = $('toast');
+  el.textContent = text;
+  el.className = 'show' + (warn ? ' warn' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = warn ? 'warn' : ''; }, 4200);
+}
+
+/* called the moment host and guest are paired */
+function announcePaired() {
+  $('netModal').hidden = true;                 // get the lobby out of the way
+  $('startModal').hidden = true;
+  toast('Connected — you are ' + name(myColor) + '. ' +
+        (S.turn === myColor ? 'You go first.' : name(-myColor) + ' goes first.'));
+  refit();
+}
+
 /* ---------- lobby wiring ---------- */
 function showTab(which) {
   $('hostPane').hidden = which !== 'host';
@@ -1093,7 +1215,6 @@ function showTab(which) {
   $('tabHost').className = which === 'host' ? '' : 'small';
   $('tabJoin').className = which === 'join' ? '' : 'small';
 }
-$('playOnline').onclick = () => { $('netModal').hidden = false; if (!net.role) netStatus('', ''); };
 $('netClose').onclick = () => { $('netModal').hidden = true; };
 $('netModal').addEventListener('click', e => { if (e.target === $('netModal')) $('netModal').hidden = true; });
 $('tabHost').onclick = () => showTab('host');
@@ -1510,23 +1631,75 @@ function draw() {
   broadcast();
 }
 
-/* ---------- fit to window ---------- */
+/* ---------- fit to whatever screen we're on ---------- */
 const ASPECT = W / H;
+const stackedLayout = () => window.matchMedia('(max-width: 900px), (max-height: 560px)').matches;
 function fitBoard() {
-  const stage = $('stage');
-  stage.style.width = 'auto';
+  const stage = $('stage'), side = $('side');
+  const stacked = stackedLayout();
+  const pad = stacked ? 8 : 16;
+  const gap = stacked ? 4 : 7;
+
+  stage.style.width = stacked ? '100%' : 'auto';
   cv.style.width = '0px'; cv.style.height = '0px';
-  const chrome = $('score').offsetHeight + $('panel').offsetHeight + $('hint').offsetHeight;
-  const availH = window.innerHeight - 16 - chrome - 21;
-  const availW = window.innerWidth - 16 - $('side').offsetWidth - 8;
+
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+
+  const rows = $('score').offsetHeight + $('panel').offsetHeight
+             + ($('hint').offsetHeight || 0) + ($('rotate').offsetHeight || 0)
+             + (stacked ? side.offsetHeight : 0);
+  const gaps = gap * (stacked ? 4 : 3);
+
+  const availH = vh - pad - rows - gaps;
+  const availW = vw - pad - (stacked ? 0 : side.offsetWidth + 8);
+
   let w = Math.min(availW, 1180), h = w / ASPECT;
   if (h > availH) { h = availH; w = h * ASPECT; }
-  w = Math.max(w, 460); h = w / ASPECT;
+  w = Math.max(w, 280); h = w / ASPECT;
+
   cv.style.width = Math.round(w) + 'px';
   cv.style.height = Math.round(h) + 'px';
-  stage.style.width = Math.round(w + $('side').offsetWidth + 8) + 'px';
+  if (!stacked) stage.style.width = Math.round(w + side.offsetWidth + 8) + 'px';
 }
-window.addEventListener('resize', fitBoard);
+const refit = () => { fitBoard(); fitBoard(); };
+window.addEventListener('resize', refit);
+window.addEventListener('orientationchange', () => setTimeout(refit, 250));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+
+/* ---------- menu (keeps New Game well away from the Roll button) ---------- */
+const openMenu  = () => { $('menuModal').hidden = false; };
+const closeMenu = () => { $('menuModal').hidden = true; };
+$('menuBtn').onclick = openMenu;
+$('menuClose').onclick = closeMenu;
+$('menuModal').addEventListener('click', e => { if (e.target === $('menuModal')) closeMenu(); });
+$('newgame').onclick = () => { closeMenu(); act({ type: 'new' }); };
+$('resetScore').onclick = () => { closeMenu(); act({ type: 'reset' }); };
+$('starter').onchange = e => { closeMenu(); act({ type: 'starter', v: e.target.value }); };
+$('playOnline').onclick = () => { closeMenu(); $('netModal').hidden = false; if (!net.role) netStatus('', ''); };
+$('editScore').onclick = () => {
+  closeMenu();
+  $('inW').value = match.W; $('inB').value = match.B; $('inG').value = match.game;
+  $('modal').hidden = false; $('inW').focus(); $('inW').select();
+};
+
+/* ---------- start screen ---------- */
+function startLocal() {
+  leaveNet(true);
+  myColor = null;
+  $('startModal').hidden = true;
+  viewFlip = desiredFlip();
+  netStatus('', '');
+  gate(); refit(); draw();
+}
+$('startLocal').onclick = startLocal;
+$('startOnline').onclick = () => {
+  $('startModal').hidden = true;
+  $('netModal').hidden = false;
+  showTab('host');
+  netStatus('', '');
+  refit();
+};
 
 /* ---------- boot ---------- */
 loadMatch();
@@ -1538,13 +1711,15 @@ if (!storeOK) $('legend').innerHTML = 'Pips left to bear off.<br>Bar checker = 2
 
 const joinParam = new URLSearchParams(location.search).get('join');
 if (joinParam) {
+  // arrived from an invite link — skip the start screen and connect straight away
+  $('startModal').hidden = true;
   showTab('join');
   $('codeIn').value = joinParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   $('netModal').hidden = false;
   joinGame($('codeIn').value);
 }
 
-fitBoard(); fitBoard();
+refit();
 </script>
 </body>
 </html>
