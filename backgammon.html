@@ -19,7 +19,16 @@
     -webkit-user-select: none; user-select: none;
   }
   [hidden] { display: none !important; }
-  #stage { display: flex; flex-direction: column; gap: 7px; max-width: 100%; }
+  #stage {
+    display: grid; gap: 7px; max-width: 100%;
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "score score" "side board" "panel panel" "hint hint";
+  }
+  #score { grid-area: score; }
+  #side  { grid-area: side; }
+  #board { grid-area: board; }
+  #panel { grid-area: panel; }
+  #hint  { grid-area: hint; }
 
   /* ---------- score strip ---------- */
   #score {
@@ -45,7 +54,6 @@
   #history { font-size: 10.5px; color: #7d6d56; letter-spacing: .3px; }
 
   /* ---------- board row ---------- */
-  #main { display: flex; gap: 8px; align-items: stretch; }
   #side {
     width: 138px; flex: none;
     background: #241a12; border: 1px solid #4a3826; border-radius: 7px;
@@ -70,6 +78,7 @@
   canvas { display: block; border-radius: 7px; box-shadow: 0 14px 44px rgba(0,0,0,.8); cursor: pointer; }
 
   /* ---------- control bar ---------- */
+  .pair { display: contents; }
   #panel {
     display: flex; align-items: center; gap: 9px;
     background: #241a12; border: 1px solid #4a3826; border-radius: 6px; padding: 7px 12px;
@@ -184,8 +193,11 @@
 
   /* ---------- portrait phone: stack the panels above the board ---------- */
   @media (max-width: 760px) and (orientation: portrait) {
-    #stage { width: 100%; }
-    #main { flex-direction: column; gap: 4px; }
+    #stage {
+      width: 100%;
+      grid-template-columns: 1fr;
+      grid-template-areas: "score" "side" "board" "panel";
+    }
     #side {
       width: 100%; flex-direction: row; align-items: center; gap: 5px;
       padding: 4px 5px; border-radius: 6px;
@@ -197,18 +209,39 @@
     #netpill { font-size: 8px; padding: 4px 6px; }
   }
 
-  /* ---------- landscape phone: keep the side column so the board gets the height ---------- */
+  /* ---------- landscape phone: stack the chrome in a narrow left column so the
+       board gets every pixel of screen height (height is the binding constraint) ---------- */
   @media (max-height: 620px) and (orientation: landscape) {
-    #side { width: 104px; padding: 5px 6px; gap: 4px; }
+    body { padding: 3px; }
+    #stage {
+      gap: 3px; width: 100%; height: 100%;
+      grid-template-columns: 118px 1fr;
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas: "score board" "side board" "panel board";
+    }
+    #hint { display: none; }
+    #board { align-self: center; justify-self: center; }
+
+    #score { flex-direction: column; gap: 3px; padding: 4px; }
+    .plate { width: 100%; padding: 2px 6px; }
+    #mid { display: none; }
+    .pts { font-size: 15px; }
+    .who { font-size: 9.5px; gap: 5px; }
+    .dot { width: 11px; height: 11px; }
+
+    #side { width: auto; padding: 4px; gap: 3px; }
     #side h3, #legend, #lead, .pip .d { display: none; }
-    .pip { padding: 4px 6px; }
-    .pip .nm { font-size: 9px; letter-spacing: .3px; gap: 4px; }
-    .pip .v { font-size: 17px; }
-    #netpill { font-size: 7.5px; padding: 3px 4px; margin-top: auto; }
-    #score { padding: 2px 5px; }
-    .pts { font-size: 16px; }
-    .who { font-size: 10px; }
-    #games { display: none; }
+    .pip { padding: 3px 6px; display: flex; align-items: center; gap: 5px; }
+    .pip .nm { font-size: 8.5px; letter-spacing: .2px; gap: 4px; }
+    .pip .nm .dot { width: 9px; height: 9px; }
+    .pip .v { font-size: 15px; margin-left: auto; }
+    #netpill { font-size: 7px; padding: 3px; letter-spacing: .8px; }
+
+    #panel { align-self: end; flex-direction: column; align-items: stretch; gap: 4px; padding: 4px; }
+    #msg { font-size: 9.5px; line-height: 1.3; text-align: center; order: -1; }
+    #roll { width: 100%; font-size: 13px; padding: 9px 4px; min-height: 38px; }
+    #undo, #menuBtn { flex: 1; min-height: 34px; padding: 7px 4px; font-size: 10.5px; margin: 0; }
+    #panel .pair { display: flex; gap: 4px; }
   }
 
   /* ---------- portrait on a phone: ask for landscape, the board needs the width ---------- */
@@ -253,8 +286,7 @@
     <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span>DAVID<span class="dot b"></span></span></div>
   </div>
 
-  <div id="main">
-    <div id="side">
+  <div id="side">
       <h3>PIP COUNT</h3>
       <div class="pip" id="pipW">
         <div class="nm"><span class="dot w" style="width:13px;height:13px"></span>JOSH</div>
@@ -270,14 +302,12 @@
       <div id="netpill">SAME DEVICE</div>
       <div id="legend">Pips left to bear off.<br>Bar checker = 25.<br>Lower is better.</div>
     </div>
-    <canvas id="board" width="1120" height="740"></canvas>
-  </div>
+  <canvas id="board" width="1120" height="740"></canvas>
 
   <div id="panel">
     <span id="msg"></span>
     <button id="roll">Roll</button>
-    <button id="undo" disabled>Undo</button>
-    <button class="small" id="menuBtn">Menu</button>
+    <span class="pair"><button id="undo" disabled>Undo</button><button class="small" id="menuBtn">Menu</button></span>
   </div>
   <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
 </div>
@@ -1676,35 +1706,45 @@ function draw() {
 
 /* ---------- fit to whatever screen we're on ---------- */
 const ASPECT = W / H;
-const stackedLayout = () => window.matchMedia('(max-width: 760px) and (orientation: portrait)').matches;
+const mq = q => window.matchMedia(q).matches;
+function layoutMode() {
+  if (mq('(max-height: 620px) and (orientation: landscape)')) return 'phone-landscape';
+  if (mq('(max-width: 760px) and (orientation: portrait)'))   return 'portrait';
+  return 'desktop';
+}
 function fitBoard() {
   const stage = $('stage'), side = $('side');
-  const stacked = stackedLayout();
-  const small = window.matchMedia('(max-width: 900px), (max-height: 620px)').matches;
-  const pad = small ? 8 : 16;
-  const gap = small ? 4 : 7;
+  const mode = layoutMode();
+  const small = mq('(max-width: 900px), (max-height: 620px)');
+  const pad = mode === 'phone-landscape' ? 6 : (small ? 8 : 16);
+  const gap = mode === 'phone-landscape' ? 3 : (small ? 4 : 7);
 
-  stage.style.width = stacked ? '100%' : 'auto';
+  stage.style.width = mode === 'desktop' ? 'auto' : '100%';
   cv.style.width = '0px'; cv.style.height = '0px';
 
   const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
   const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
 
-  const rows = $('score').offsetHeight + $('panel').offsetHeight
-             + ($('hint').offsetHeight || 0)
-             + (stacked ? side.offsetHeight : 0);
-  const gaps = gap * (stacked ? 4 : 3);
-
-  const availH = vh - pad - rows - gaps;
-  const availW = vw - pad - (stacked ? 0 : side.offsetWidth + 8);
+  let availH, availW;
+  if (mode === 'phone-landscape') {
+    // the board spans every row of the grid, so only the page padding costs height
+    availH = vh - pad;
+    availW = vw - pad - side.offsetWidth - gap;
+  } else if (mode === 'portrait') {
+    availH = vh - pad - $('score').offsetHeight - $('panel').offsetHeight - side.offsetHeight - gap * 4;
+    availW = vw - pad;
+  } else {
+    availH = vh - pad - $('score').offsetHeight - $('panel').offsetHeight - ($('hint').offsetHeight || 0) - gap * 3;
+    availW = vw - pad - side.offsetWidth - gap;
+  }
 
   let w = Math.min(availW, 1180), h = w / ASPECT;
   if (h > availH) { h = availH; w = h * ASPECT; }
-  w = Math.max(w, 280); h = w / ASPECT;
+  w = Math.max(w, 260); h = w / ASPECT;
 
   cv.style.width = Math.round(w) + 'px';
   cv.style.height = Math.round(h) + 'px';
-  if (!stacked) stage.style.width = Math.round(w + side.offsetWidth + 8) + 'px';
+  if (mode === 'desktop') stage.style.width = Math.round(w + side.offsetWidth + gap) + 'px';
 }
 const refit = () => { fitBoard(); fitBoard(); };
 
