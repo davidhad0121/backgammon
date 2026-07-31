@@ -26,11 +26,13 @@
     transition: border-color .25s, box-shadow .25s;
   }
   .plate.active { border-color: #c8a870; box-shadow: 0 0 0 1px rgba(200,168,112,.35) inset; }
+  .plate.me { background: #221a10; }
   .who { display: flex; align-items: center; gap: 8px; font-size: 13.5px; letter-spacing: 1px; }
   .dot { width: 17px; height: 17px; border-radius: 50%; border: 1px solid #000; flex: none; }
   .dot.w { background: radial-gradient(circle at 32% 30%, #fffdf6, #cbbb98); }
   .dot.b { background: radial-gradient(circle at 32% 30%, #5a5148, #16120e); }
   .pts { font-size: 25px; color: #f0e0bc; margin-left: auto; line-height: 1; }
+  .youtag { font-size: 8.5px; letter-spacing: 1.5px; color: #14100c; background: #c8a870; padding: 2px 5px; border-radius: 3px; }
   #mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
   #games { font-size: 10px; letter-spacing: 3px; color: #8a7860; }
   #last { font-size: 12px; color: #b09a76; }
@@ -50,6 +52,13 @@
   .pip .v { font-size: 27px; color: #f0e0bc; line-height: 1.05; text-align: right; }
   .pip .d { font-size: 10px; color: #7d6d56; text-align: right; min-height: 13px; }
   #lead { font-size: 10.5px; color: #9c8a70; text-align: center; line-height: 1.4; border-top: 1px solid #372a1c; padding-top: 8px; }
+  #netpill {
+    font-size: 9.5px; letter-spacing: 1.4px; text-align: center; padding: 5px 4px;
+    border-radius: 4px; border: 1px solid #372a1c; background: #1b130d; color: #7d6d56;
+  }
+  #netpill.on   { border-color: #3f7a4a; color: #8fd6a2; background: #14200f; }
+  #netpill.wait { border-color: #7a6330; color: #e0bc6a; background: #201a0d; }
+  #netpill.err  { border-color: #7a3730; color: #e08a76; background: #200f0d; }
   #legend { margin-top: auto; font-size: 9.5px; color: #6f6047; line-height: 1.5; border-top: 1px solid #372a1c; padding-top: 8px; }
 
   canvas { display: block; border-radius: 7px; box-shadow: 0 14px 44px rgba(0,0,0,.8); cursor: pointer; }
@@ -67,6 +76,8 @@
   button:hover:not(:disabled) { background: #85602f; }
   button:disabled { opacity: .3; cursor: default; }
   button.small { font-size: 10.5px; padding: 6px 9px; letter-spacing: .4px; background: #3c2c1a; border-color: #56412a; }
+  button.gold { background: #8a6626; border-color: #b08a3c; }
+  button.gold:hover:not(:disabled) { background: #a37b2e; }
   select {
     font-family: inherit; font-size: 10.5px; letter-spacing: .4px;
     background: #3c2c1a; color: #f0e4cc; border: 1px solid #56412a;
@@ -75,37 +86,59 @@
   select:disabled { opacity: .3; cursor: default; }
   .hint { font-size: 11px; color: #7d6d56; letter-spacing: .3px; text-align: center; }
 
-  /* edit-score modal */
-  #modal {
-    position: fixed; inset: 0; background: rgba(10,7,4,.78);
-    display: flex; align-items: center; justify-content: center; z-index: 9;
+  /* modals */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(10,7,4,.8);
+    display: flex; align-items: center; justify-content: center; z-index: 9; padding: 16px;
   }
-  #modal[hidden] { display: none; }
-  #card {
+  .overlay[hidden] { display: none; }
+  .card {
     background: #241a12; border: 1px solid #6b4c2a; border-radius: 9px;
-    padding: 20px 22px; width: 300px; display: flex; flex-direction: column; gap: 12px;
-    box-shadow: 0 22px 60px rgba(0,0,0,.75);
+    padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
+    box-shadow: 0 22px 60px rgba(0,0,0,.75); max-height: 94vh; overflow-y: auto;
   }
-  #card h3 { margin: 0; font-size: 13px; letter-spacing: 3px; color: #c8a870; font-weight: normal; text-align: center; }
-  #card label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #d8c8a8; }
-  #card input {
-    width: 92px; font-family: inherit; font-size: 17px; text-align: right;
+  .card h3 { margin: 0; font-size: 13px; letter-spacing: 3px; color: #c8a870; font-weight: normal; text-align: center; }
+  .card label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #d8c8a8; }
+  .card input {
+    font-family: inherit; font-size: 17px; text-align: right;
     background: #1b130d; color: #f0e0bc; border: 1px solid #4a3826; border-radius: 4px; padding: 6px 9px;
   }
-  #card .btns { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
+  .card .btns { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
+  #card { width: 300px; }
+  #card input { width: 92px; }
+
+  /* online lobby */
+  #netCard { width: 372px; }
+  .seg { display: flex; gap: 7px; }
+  .seg button { flex: 1; }
+  .netbox { background: #1b130d; border: 1px solid #372a1c; border-radius: 6px; padding: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  #codeBig { font-size: 40px; letter-spacing: 11px; color: #f0d9a0; text-indent: 11px; line-height: 1; }
+  #qr { background: #f3ead6; padding: 8px; border-radius: 6px; line-height: 0; min-height: 40px; }
+  #qr svg, #qr img { display: block; width: 168px; height: 168px; image-rendering: pixelated; }
+  #joinLink {
+    width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; text-align: center;
+    background: #14100c; color: #b09a76; border: 1px solid #372a1c; border-radius: 4px; padding: 6px;
+  }
+  #codeIn {
+    width: 100%; text-align: center; font-size: 27px; letter-spacing: 9px; text-indent: 9px;
+    text-transform: uppercase; padding: 9px;
+  }
+  #netStatus { font-size: 12px; color: #b09a76; text-align: center; min-height: 17px; }
+  .netnote { font-size: 10.5px; color: #7d6d56; line-height: 1.55; text-align: center; }
+  .sidechoice { display: flex; gap: 7px; align-items: center; justify-content: center; font-size: 12px; color: #c0ac8c; }
 </style>
 </head>
 <body>
 
 <div id="stage">
   <div id="score">
-    <div class="plate" id="plateW"><span class="who"><span class="dot w"></span>JOSH</span><span class="pts" id="ptsW">0</span></div>
+    <div class="plate" id="plateW"><span class="who"><span class="dot w"></span>JOSH<span class="youtag" id="youW" hidden>YOU</span></span><span class="pts" id="ptsW">0</span></div>
     <div id="mid">
       <div id="games">GAME 1</div>
       <div id="last">Match not started</div>
       <div id="history"></div>
     </div>
-    <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto">DAVID<span class="dot b"></span></span></div>
+    <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span>DAVID<span class="dot b"></span></span></div>
   </div>
 
   <div id="main">
@@ -122,6 +155,7 @@
         <div class="d" id="pipBd"></div>
       </div>
       <div id="lead">Level</div>
+      <div id="netpill">SAME DEVICE</div>
       <div id="legend">Pips left to bear off.<br>Bar checker = 25.<br>Lower is better.</div>
     </div>
     <canvas id="board" width="1120" height="740"></canvas>
@@ -137,14 +171,16 @@
       <option value="1">First move: Josh</option>
       <option value="-1">First move: David</option>
     </select>
+    <button class="gold" id="playOnline">Play Online</button>
     <button class="small" id="editScore">Edit Score</button>
     <button class="small" id="resetScore">Reset Match</button>
   </div>
-  <div class="hint" id="hint">Board faces the player on turn · click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
+  <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off · Play Online for two devices</div>
 </div>
 
-<div id="modal" hidden>
-  <div id="card">
+<!-- edit score -->
+<div id="modal" class="overlay" hidden>
+  <div id="card" class="card">
     <h3>EDIT SCORE</h3>
     <label>Josh <input id="inW" type="number" min="0" step="1"></label>
     <label>David <input id="inB" type="number" min="0" step="1"></label>
@@ -152,6 +188,47 @@
     <div class="btns">
       <button class="small" id="mCancel">Cancel</button>
       <button id="mSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- online lobby -->
+<div id="netModal" class="overlay" hidden>
+  <div id="netCard" class="card">
+    <h3>PLAY ONLINE</h3>
+
+    <div class="seg" id="netTabs">
+      <button id="tabHost">Create game</button>
+      <button id="tabJoin" class="small">Join game</button>
+    </div>
+
+    <div id="hostPane" class="netbox">
+      <div class="sidechoice">
+        I'll play as
+        <select id="hostSide">
+          <option value="1">Josh</option>
+          <option value="-1">David</option>
+        </select>
+      </div>
+      <button class="gold" id="btnHost">Create game</button>
+      <div id="codeBig" hidden></div>
+      <div id="qr" hidden></div>
+      <input id="joinLink" readonly hidden>
+      <button class="small" id="btnCopy" hidden>Copy invite link</button>
+      <div class="netnote" id="hostNote" hidden>Send the link or have them scan the code.<br>They can also type the code on the Join tab.</div>
+    </div>
+
+    <div id="joinPane" class="netbox" hidden>
+      <input id="codeIn" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+      <button class="gold" id="btnJoin">Join game</button>
+      <div class="netnote">Ask the host for the 4-character code,<br>or just open the link they send you.</div>
+    </div>
+
+    <div id="netStatus"></div>
+
+    <div class="btns">
+      <button class="small" id="btnLeave" hidden>Disconnect</button>
+      <button class="small" id="netClose">Close</button>
     </div>
   </div>
 </div>
@@ -173,7 +250,6 @@ const TRAY_X = W - BORDER - TRAY_W + 6;
 const BAR_X = PLAY_X + HALF_W;
 const RIGHT_X = BAR_X + BAR_W;
 
-/* screen slots: 0 = bottom-right … 11 = bottom-far-left, 12 = top-far-left … 23 = top-right */
 function slotCenter(s) {
   if (s < 6)  return { x: RIGHT_X + (5 - s) * PT_W + PT_W/2, y: BOT_Y, dir: -1 };
   if (s < 12) return { x: PLAY_X + (11 - s) * PT_W + PT_W/2, y: BOT_Y, dir: -1 };
@@ -181,7 +257,6 @@ function slotCenter(s) {
   return            { x: RIGHT_X + (s - 18) * PT_W + PT_W/2, y: TOP_Y, dir:  1 };
 }
 
-/* logical index 0 = Josh's 1-point, 23 = Josh's 24-point. viewFlip = David is near. */
 let viewFlip = false;
 const toSlot    = i => viewFlip ? 23 - i : i;
 const toLogical = s => viewFlip ? 23 - s : s;
@@ -190,11 +265,60 @@ const nearPlayer = () => viewFlip ? -1 : 1;
 /* ---------- state ---------- */
 let match = { W: 0, B: 0, game: 1, log: [], lastWinner: null };
 let S;
+let rollAvailable = false, undoAvailable = false;
+
+/* myColor: null = both players on this device; 1/-1 = my seat in an online game */
+let myColor = null;
 
 const $ = id => document.getElementById(id);
-const msg = t => $('msg').textContent = t;
+const msg = t => { $('msg').textContent = t; };
 const name = c => NAMES[c];
 const avail = () => S.dice.filter(d => !d.used).map(d => d.v);
+const setRoll = v => { rollAvailable = v; };
+const setUndo = v => { undoAvailable = v; };
+
+/* whose input the game is waiting on right now */
+function actor() {
+  if (!S) return null;
+  if (S.phase === 'opening') return S.open.w === null ? 1 : (S.open.b === null ? -1 : null);
+  if (S.phase === 'play') return S.turn;
+  return null;
+}
+const desiredFlip = () => myColor !== null ? myColor === -1 : (S.phase === 'play' && S.turn === -1);
+
+/* buttons reflect game state, then get narrowed to my seat when online */
+function gate() {
+  const mineNow = myColor === null || actor() === myColor;
+  $('roll').disabled = !rollAvailable || !mineNow;
+  $('undo').disabled = !undoAvailable || (myColor !== null && S.turn !== myColor);
+  $('starter').disabled = S.phase === 'over' || (S.phase === 'play' && S.dice.length > 0);
+  $('youW').hidden = myColor !== 1;
+  $('youB').hidden = myColor !== -1;
+  $('plateW').classList.toggle('me', myColor === 1);
+  $('plateB').classList.toggle('me', myColor === -1);
+}
+
+/* ---------- persistence ---------- */
+const STORE_KEY = 'backgammon.match.v1';
+let storeOK = true;
+function saveMatch() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(match)); } catch (e) { storeOK = false; }
+}
+function loadMatch() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return;
+    const o = JSON.parse(raw);
+    if (typeof o !== 'object' || o === null) return;
+    match = {
+      W: Number.isFinite(o.W) ? Math.max(0, o.W | 0) : 0,
+      B: Number.isFinite(o.B) ? Math.max(0, o.B | 0) : 0,
+      game: Number.isFinite(o.game) ? Math.max(1, o.game | 0) : 1,
+      log: Array.isArray(o.log) ? o.log.filter(l => l && typeof l.full === 'string') : [],
+      lastWinner: o.lastWinner === 1 || o.lastWinner === -1 ? o.lastWinner : null,
+    };
+  } catch (e) { storeOK = false; }
+}
 
 function newGame() {
   S = {
@@ -206,29 +330,22 @@ function newGame() {
     phase: 'opening',
     open: { w: null, b: null },
   };
-  // Josh moves 23 -> 0 ; David moves 0 -> 23
   [[23,1,2],[12,1,5],[7,1,3],[5,1,5],[0,-1,2],[11,-1,5],[16,-1,3],[18,-1,5]]
     .forEach(([p,c,n]) => S.pts[p] = { c, n });
   spin = null; flashState = null;
-  $('roll').disabled = false;
-  $('undo').disabled = true;
-
+  setRoll(true); setUndo(false);
   $('starter').value = 'auto';
 
   if (match.lastWinner) {
-    // only the first game of a match is decided by single dice — after that the
-    // previous game's winner opens, rolling two dice as normal
     startWith(match.lastWinner, name(match.lastWinner) + ' won the last game and starts.');
   } else {
     openingPrompt();
   }
-  viewFlip = S.phase === 'play' && S.turn === -1;
-  refreshControls();
+  viewFlip = desiredFlip();
   renderScore();
   draw();
 }
 
-/* skip the opening roll and hand the first move to a chosen player */
 function startWith(c, text) {
   S.phase = 'play';
   S.turn = c;
@@ -237,14 +354,8 @@ function startWith(c, text) {
   S.sel = null;
   S.history = [];
   $('roll').textContent = 'Roll';
-  $('roll').disabled = false;
-  $('undo').disabled = true;
+  setRoll(true); setUndo(false);
   msg(text || (name(c) + ' opens — roll.'));
-}
-
-/* the starter override stays live until the first dice of the game are on the board */
-function refreshControls() {
-  $('starter').disabled = S.phase === 'over' || (S.phase === 'play' && S.dice.length > 0);
 }
 
 function openingPrompt() {
@@ -284,7 +395,7 @@ function renderScore() {
   pipCache = ''; renderPips();
 }
 
-/* ---------- rules (board-generic so sequences can be simulated) ---------- */
+/* ---------- rules ---------- */
 const cloneB = b => ({ pts: b.pts.map(p => ({ c: p.c, n: p.n })), bar: { ...b.bar }, off: { ...b.off } });
 const live = () => ({ pts: S.pts, bar: S.bar, off: S.off });
 
@@ -335,6 +446,14 @@ function movesB(b, c, dice) {
 }
 const legalMoves = c => movesB(live(), c, avail());
 
+function deadTurn(c) {
+  const b = live();
+  for (let a = 1; a <= 6; a++)
+    for (let d = a; d <= 6; d++)
+      if (movesB(b, c, a === d ? [a, a, a, a] : [a, d]).length) return false;
+  return true;
+}
+
 function applyB(b, c, m) {
   if (m.from === 'bar') b.bar[c]--;
   else { b.pts[m.from].n--; if (!b.pts[m.from].n) b.pts[m.from].c = 0; }
@@ -346,8 +465,6 @@ function applyB(b, c, m) {
   }
 }
 
-/* every destination reachable from `origin`, chaining dice through legal
-   intermediate points — 3 then 4 gets you 7 provided the 3 lands somewhere legal */
 function pathsFrom(origin) {
   const c = S.turn, res = new Map();
   (function rec(b, pos, dice, seq) {
@@ -372,7 +489,6 @@ function pathsFrom(origin) {
 const snapshot = () => JSON.stringify({ pts: S.pts, bar: S.bar, off: S.off, dice: S.dice });
 function restore(s) { const o = JSON.parse(s); S.pts = o.pts; S.bar = o.bar; S.off = o.off; S.dice = o.dice; }
 
-/* a whole sequence is one undo step */
 function applySequence(seq) {
   S.history.push(snapshot());
   for (const m of seq) {
@@ -380,10 +496,9 @@ function applySequence(seq) {
     const d = S.dice.find(x => !x.used && x.v === m.die);
     if (d) d.used = true;
   }
-  $('undo').disabled = false;
+  setUndo(true);
 }
 
-/* 1 single · 2 gammon · 3 backgammon (home board) · 4 loser still on the bar */
 function scoreGame(winner) {
   const l = -winner;
   if (S.off[l] > 0) return { pts: 1, label: 'single' };
@@ -402,11 +517,10 @@ function endGame(winner) {
   });
   match.game++;
   match.lastWinner = winner;
+  saveMatch();
   S.phase = 'over';
-  refreshControls();
   msg(name(winner) + ' wins ' + r.pts + ' point' + (r.pts > 1 ? 's' : '') + ' — ' + r.label + '.');
-  $('roll').disabled = true;
-  $('undo').disabled = true;
+  setRoll(false); setUndo(false);
   renderScore();
   draw();
 }
@@ -428,17 +542,35 @@ function afterMove() {
 
 function endTurn() {
   if (S.phase !== 'play') return;
-  S.turn = -S.turn;
   S.dice = []; S.sel = null; S.history = [];
-  $('roll').disabled = false;
-  $('undo').disabled = true;
+
+  const next = -S.turn;
+  if (deadTurn(next) && !deadTurn(S.turn)) {
+    setRoll(false); setUndo(false);
+    const shutOut = S.bar[next] > 0;
+    msg(name(next) + (shutOut ? ' is shut out — no entry from the bar. ' : ' is completely blocked. ')
+        + name(S.turn) + ' rolls again.');
+    flash('blocked', { who: next, shutOut, again: S.turn });
+    setTimeout(() => {
+      if (S.phase !== 'play') return;
+      setRoll(true);
+      msg(name(S.turn) + ' rolls again — ' + name(next) + ' had no move.');
+      draw();
+    }, FLASH_MS.blocked - 250);
+    renderScore();
+    draw();
+    return;
+  }
+
+  S.turn = next;
+  setRoll(true); setUndo(false);
   msg(name(S.turn) + ' to roll.');
   renderScore();
   faceCurrentPlayer();
 }
 
 function faceCurrentPlayer() {
-  const want = S.phase === 'play' && S.turn === -1;
+  const want = desiredFlip();
   if (want !== viewFlip) { viewFlip = want; spin = { t0: performance.now() }; requestTick(); }
   else draw();
 }
@@ -446,7 +578,6 @@ function faceCurrentPlayer() {
 const d6 = () => 1 + Math.floor(Math.random() * 6);
 const isSheshBesh = v => v.length === 2 && v.includes(6) && v.includes(5);
 
-/* ---------- opening roll, one die at a time ---------- */
 function openingStep() {
   if (S.open.w === null) { S.open.w = d6(); openingPrompt(); draw(); return; }
   S.open.b = d6();
@@ -464,9 +595,8 @@ function openingStep() {
   S.dice = [{ v: w, used: false }, { v: b, used: false }];
   S.history = [];
   $('roll').textContent = 'Roll';
-  $('roll').disabled = true;
+  setRoll(false);
   msg(name(winner) + ' wins the opening roll (' + w + '–' + b + ') and plays ' + w + ' and ' + b + '.');
-  refreshControls();
   renderScore();
   faceCurrentPlayer();
   if (isSheshBesh([w, b])) flash('shesh');
@@ -479,9 +609,7 @@ function roll() {
                    : [{ v: a, used: false }, { v: b, used: false }];
   S.open = { w: null, b: null };
   S.history = [];
-  $('roll').disabled = true;
-  $('undo').disabled = true;
-  refreshControls();
+  setRoll(false); setUndo(false);
   const tag = a === b ? ' (doubles)' : '';
   if (a === 6 && b === 6) flash('double6');
   else if (isSheshBesh([a, b])) flash('shesh');
@@ -495,14 +623,71 @@ function roll() {
   draw();
 }
 
-/* ---------- interaction ---------- */
-cv.addEventListener('click', e => {
+/* ---------- actions (single funnel so the network can replay them) ---------- */
+function act(a) {
+  if (net.role === 'guest') { netSend({ t: 'act', a }); return; }
+  applyAct(a, myColor);
+}
+function applyAct(a, who) {
+  switch (a.type) {
+    case 'roll':    doRoll(who); break;
+    case 'hit':     boardHit(a.hit, who); break;
+    case 'undo':    doUndo(who); break;
+    case 'new':     newGame(); break;
+    case 'reset':   match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; saveMatch(); newGame(); break;
+    case 'starter': doStarter(a.v); break;
+    case 'score':   doEditScore(a.w, a.b, a.g); break;
+  }
+}
+
+function doRoll(who) {
+  if (who !== null && actor() !== who) return;
+  if (!rollAvailable) return;
+  roll();
+}
+
+function doUndo(who) {
+  if (who !== null && S.turn !== who) return;
+  if (!S.history.length) return;
+  restore(S.history.pop());
+  S.sel = null;
+  if (!S.history.length) setUndo(false);
+  msg(name(S.turn) + ' to move — ' + avail().join(', '));
+  renderPips();
+  draw();
+}
+
+function doStarter(v) {
+  $('starter').value = v;
+  if (v === 'auto') {
+    if (match.lastWinner) startWith(match.lastWinner, name(match.lastWinner) + ' won the last game and starts.');
+    else {
+      S.phase = 'opening';
+      S.open = { w: null, b: null };
+      S.dice = []; S.sel = null; S.history = [];
+      setRoll(true); setUndo(false);
+      openingPrompt();
+    }
+  } else {
+    startWith(Number(v), name(Number(v)) + ' opens this game by override — roll.');
+  }
+  renderScore();
+  faceCurrentPlayer();
+}
+
+function doEditScore(w, b, g) {
+  match.W = Math.max(0, Math.round(w) || 0);
+  match.B = Math.max(0, Math.round(b) || 0);
+  match.game = Math.max(1, Math.round(g) || 1);
+  saveMatch();
+  renderScore();
+  draw();
+}
+
+function boardHit(hit, who) {
   if (S.phase !== 'play' || spin || avail().length === 0) return;
-  const r = cv.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
-  const hit = hitTest(x, y);
-  if (hit === null) return;
   const c = S.turn;
+  if (who !== null && who !== c) return;
 
   if (S.sel === null) {
     if (S.bar[c] > 0) { if (hit === 'bar') { S.sel = 'bar'; draw(); } return; }
@@ -512,16 +697,24 @@ cv.addEventListener('click', e => {
 
   const paths = pathsFrom(S.sel);
 
-  // second click on the same checker = bear it off, if that's legal
   if (hit === S.sel) {
     if (paths.has('off')) { applySequence(paths.get('off')); S.sel = null; afterMove(); }
     else { S.sel = null; draw(); }
     return;
   }
-
   if (paths.has(hit)) { applySequence(paths.get(hit)); S.sel = null; afterMove(); return; }
-
   if (typeof hit === 'number' && S.bar[c] === 0 && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+}
+
+/* ---------- input ---------- */
+cv.addEventListener('click', e => {
+  if (!S || S.phase !== 'play' || spin) return;
+  if (myColor !== null && S.turn !== myColor) return;
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
+  const hit = hitTest(x, y);
+  if (hit === null) return;
+  act({ type: 'hit', hit });
 });
 
 function hitTest(x, y) {
@@ -536,61 +729,319 @@ function hitTest(x, y) {
   return toLogical(s);
 }
 
-$('roll').onclick = roll;
-$('newgame').onclick = newGame;
-$('undo').onclick = () => {
-  if (!S.history.length) return;
-  restore(S.history.pop());
-  S.sel = null;
-  if (!S.history.length) $('undo').disabled = true;
-  msg(name(S.turn) + ' to move — ' + avail().join(', '));
-  renderPips();
-  draw();
-};
-$('resetScore').onclick = () => { match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; newGame(); };
+$('roll').onclick = () => act({ type: 'roll' });
+$('undo').onclick = () => act({ type: 'undo' });
+$('newgame').onclick = () => act({ type: 'new' });
+$('starter').onchange = e => act({ type: 'starter', v: e.target.value });
+$('resetScore').onclick = () => act({ type: 'reset' });
 
-$('starter').onchange = e => {
-  const v = e.target.value;
-  if (v === 'auto') {
-    if (match.lastWinner) startWith(match.lastWinner, name(match.lastWinner) + ' won the last game and starts.');
-    else {
-      S.phase = 'opening';
-      S.open = { w: null, b: null };
-      S.dice = []; S.sel = null; S.history = [];
-      $('roll').disabled = false; $('undo').disabled = true;
-      openingPrompt();
-    }
-  } else {
-    startWith(Number(v), name(Number(v)) + ' opens this game by override — roll.');
-  }
-  refreshControls();
-  renderScore();
-  faceCurrentPlayer();
-};
-
-/* edit score */
 $('editScore').onclick = () => {
   $('inW').value = match.W; $('inB').value = match.B; $('inG').value = match.game;
   $('modal').hidden = false; $('inW').focus(); $('inW').select();
 };
 $('mCancel').onclick = () => { $('modal').hidden = true; };
 $('mSave').onclick = () => {
-  const n = (el, min) => Math.max(min, Math.round(Number(el.value) || 0));
-  match.W = n($('inW'), 0); match.B = n($('inB'), 0); match.game = n($('inG'), 1);
+  const n = el => Number(el.value) || 0;
+  act({ type: 'score', w: n($('inW')), b: n($('inB')), g: n($('inG')) });
   $('modal').hidden = true;
-  renderScore();
+  const btn = $('editScore'), was = btn.textContent;
+  btn.textContent = storeOK ? 'Saved' : 'Not saved';
+  setTimeout(() => { btn.textContent = was; }, 1300);
 };
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) $('modal').hidden = true; });
 document.addEventListener('keydown', e => {
-  if ($('modal').hidden) return;
-  if (e.key === 'Escape') $('modal').hidden = true;
-  if (e.key === 'Enter') $('mSave').click();
+  if (!$('modal').hidden) {
+    if (e.key === 'Escape') $('modal').hidden = true;
+    if (e.key === 'Enter') $('mSave').click();
+    return;
+  }
+  if (!$('netModal').hidden && e.key === 'Escape') $('netModal').hidden = true;
 });
+
+/* =======================================================================
+   ONLINE PLAY — peer-to-peer over WebRTC, host is authoritative
+   ======================================================================= */
+const net = {
+  role: null,        // null | 'host' | 'guest'
+  peer: null,
+  conn: null,
+  code: null,
+  guestSeat: null,
+  fx: null,          // { kind, info, id } — replayed on the guest
+  fxSeq: 0,
+  lastFxSeen: 0,
+  lastSent: '',
+};
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I/O/0/1
+const roomCode = () => Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+const peerIdFor = code => 'bkgmn-jd-' + code;
+
+const PEER_SRCS = [
+  'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js',
+  'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js',
+];
+const QR_SRCS = [
+  'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js',
+  'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js',
+];
+
+function loadScript(srcs, ready) {
+  if (ready()) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let i = 0;
+    const tryNext = () => {
+      if (i >= srcs.length) return resolve(false);
+      const s = document.createElement('script');
+      s.src = srcs[i++];
+      s.onload = () => resolve(ready() ? true : (tryNext(), false));
+      s.onerror = tryNext;
+      document.head.appendChild(s);
+    };
+    tryNext();
+  });
+}
+
+function netStatus(text, cls) {
+  $('netStatus').textContent = text;
+  const pill = $('netpill');
+  pill.className = cls || '';
+  if (net.role && net.conn && net.conn.open && myColor !== null) {
+    pill.textContent = 'ONLINE · ' + name(myColor).toUpperCase();
+    pill.className = 'on';
+  } else if (net.role) {
+    pill.textContent = net.role === 'host'
+      ? (net.code ? 'CODE ' + net.code : 'CONNECTING')
+      : (cls === 'err' ? 'DISCONNECTED' : 'CONNECTING');
+    pill.className = cls || 'wait';
+  } else {
+    pill.textContent = 'SAME DEVICE';
+    pill.className = '';
+  }
+}
+
+function joinURL(code) {
+  const u = new URL(location.href);
+  u.hash = '';
+  u.searchParams.set('join', code);
+  return u.toString();
+}
+
+async function showQR(url) {
+  const box = $('qr');
+  box.hidden = false;
+  box.innerHTML = '';
+  const ok = await loadScript(QR_SRCS, () => typeof window.qrcode === 'function');
+  if (!ok) { box.hidden = true; return; }
+  try {
+    const q = window.qrcode(0, 'M');
+    q.addData(url);
+    q.make();
+    try { box.innerHTML = q.createSvgTag({ cellSize: 5, margin: 1, scalable: true }); }
+    catch (e2) { box.innerHTML = q.createImgTag(5, 1); }
+    if (!box.firstChild) box.hidden = true;
+  } catch (e) { box.hidden = true; }
+}
+
+/* --- host --- */
+async function hostGame(seat, attempt) {
+  netStatus('Loading connection library…', 'wait');
+  const ok = await loadScript(PEER_SRCS, () => typeof window.Peer === 'function');
+  if (!ok) { netStatus('Could not load the connection library — check your network.', 'err'); return; }
+
+  leaveNet(true);
+  myColor = seat;
+  net.role = 'host';
+  net.guestSeat = -seat;
+  net.code = roomCode();
+
+  const peer = new window.Peer(peerIdFor(net.code), { debug: 0 });
+  net.peer = peer;
+
+  peer.on('open', () => {
+    $('codeBig').hidden = false; $('codeBig').textContent = net.code;
+    const url = joinURL(net.code);
+    $('joinLink').hidden = false; $('joinLink').value = url;
+    $('btnCopy').hidden = false; $('hostNote').hidden = false;
+    showQR(url);
+    netStatus('Waiting for your opponent to join…', 'wait');
+    viewFlip = desiredFlip(); gate(); draw();
+  });
+
+  peer.on('connection', conn => {
+    if (net.conn && net.conn.open) { try { conn.close(); } catch (e) {} return; }
+    net.conn = conn;
+    wireConn(conn);
+  });
+
+  peer.on('error', err => {
+    if (err && err.type === 'unavailable-id' && (attempt || 0) < 5) { hostGame(seat, (attempt || 0) + 1); return; }
+    netStatus('Connection error: ' + ((err && err.type) || 'unknown'), 'err');
+  });
+
+  peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
+}
+
+/* --- guest --- */
+async function joinGame(code) {
+  code = (code || '').trim().toUpperCase();
+  if (code.length !== 4) { netStatus('Enter the 4-character code.', 'err'); return; }
+  netStatus('Loading connection library…', 'wait');
+  const ok = await loadScript(PEER_SRCS, () => typeof window.Peer === 'function');
+  if (!ok) { netStatus('Could not load the connection library — check your network.', 'err'); return; }
+
+  leaveNet(true);
+  net.role = 'guest';
+  net.code = code;
+  netStatus('Connecting to ' + code + '…', 'wait');
+
+  const peer = new window.Peer({ debug: 0 });
+  net.peer = peer;
+
+  peer.on('open', () => {
+    const conn = peer.connect(peerIdFor(code), { reliable: true });
+    net.conn = conn;
+    wireConn(conn);
+    setTimeout(() => {
+      if (net.role === 'guest' && (!net.conn || !net.conn.open))
+        netStatus('No answer for code ' + code + '. Check the code, or ask them to create the game again.', 'err');
+    }, 9000);
+  });
+
+  peer.on('error', err => netStatus('Connection error: ' + ((err && err.type) || 'unknown'), 'err'));
+}
+
+function wireConn(conn) {
+  conn.on('open', () => {
+    $('btnLeave').hidden = false;
+    if (net.role === 'host') {
+      conn.send({ t: 'welcome', seat: net.guestSeat });
+      net.lastSent = '';
+      broadcast(true);
+      netStatus('Connected — you are ' + name(myColor) + '.', 'on');
+    } else {
+      netStatus('Connected. Waiting for the board…', 'on');
+    }
+    gate();
+  });
+
+  conn.on('data', d => {
+    if (!d || typeof d !== 'object') return;
+    if (net.role === 'host') {
+      if (d.t === 'act') { applyAct(d.a, net.guestSeat); broadcast(); }
+      return;
+    }
+    if (d.t === 'welcome') {
+      myColor = d.seat;
+      netStatus('Connected — you are ' + name(myColor) + '.', 'on');
+      viewFlip = desiredFlip();
+      gate();
+      return;
+    }
+    if (d.t === 'state') applyState(d);
+  });
+
+  const drop = () => {
+    net.conn = null;
+    if (net.role === 'host') netStatus('Opponent disconnected. They can rejoin with code ' + net.code + '.', 'wait');
+    else netStatus('Disconnected from the host. Press Join to reconnect.', 'err');
+    gate(); draw();
+  };
+  conn.on('close', drop);
+  conn.on('error', drop);
+}
+
+function netSend(obj) {
+  if (net.conn && net.conn.open) { try { net.conn.send(obj); } catch (e) {} }
+}
+
+/* host → guest: the whole position. It's tiny, so there's nothing to reconcile. */
+function statePayload() {
+  return {
+    t: 'state',
+    s: {
+      pts: S.pts, bar: S.bar, off: S.off, turn: S.turn,
+      dice: S.dice, sel: S.sel, phase: S.phase, open: S.open,
+    },
+    m: match,
+    msg: $('msg').textContent,
+    rollLabel: $('roll').textContent,
+    canRoll: rollAvailable,
+    canUndo: undoAvailable,
+    fx: net.fx,
+  };
+}
+function broadcast(force) {
+  if (net.role !== 'host' || !net.conn || !net.conn.open) return;
+  const p = statePayload();
+  const key = JSON.stringify(p);
+  if (!force && key === net.lastSent) return;
+  net.lastSent = key;
+  try { net.conn.send(p); } catch (e) {}
+}
+
+function applyState(p) {
+  const s = p.s;
+  S.pts = s.pts; S.bar = s.bar; S.off = s.off; S.turn = s.turn;
+  S.dice = s.dice; S.sel = s.sel; S.phase = s.phase; S.open = s.open;
+  S.history = [];
+  match = p.m;
+  saveMatch();
+  msg(p.msg);
+  $('roll').textContent = p.rollLabel;
+  setRoll(p.canRoll); setUndo(p.canUndo);
+  renderScore();
+  if (p.fx && p.fx.id > net.lastFxSeen) { net.lastFxSeen = p.fx.id; flash(p.fx.kind, p.fx.info); }
+  viewFlip = desiredFlip();
+  draw();
+}
+
+function leaveNet(quiet) {
+  try { if (net.conn) net.conn.close(); } catch (e) {}
+  try { if (net.peer) net.peer.destroy(); } catch (e) {}
+  net.role = null; net.peer = null; net.conn = null; net.code = null;
+  net.guestSeat = null; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
+  myColor = null;
+  $('btnLeave').hidden = true;
+  if (!quiet) {
+    $('codeBig').hidden = true; $('qr').hidden = true; $('joinLink').hidden = true;
+    $('btnCopy').hidden = true; $('hostNote').hidden = true;
+    netStatus('Back to two players on this device.', '');
+    viewFlip = desiredFlip();
+    gate(); draw();
+  }
+}
+
+/* lobby wiring */
+function showTab(which) {
+  $('hostPane').hidden = which !== 'host';
+  $('joinPane').hidden = which !== 'join';
+  $('tabHost').className = which === 'host' ? '' : 'small';
+  $('tabJoin').className = which === 'join' ? '' : 'small';
+}
+$('playOnline').onclick = () => { $('netModal').hidden = false; if (!net.role) netStatus('', ''); };
+$('netClose').onclick = () => { $('netModal').hidden = true; };
+$('netModal').addEventListener('click', e => { if (e.target === $('netModal')) $('netModal').hidden = true; });
+$('tabHost').onclick = () => showTab('host');
+$('tabJoin').onclick = () => showTab('join');
+$('btnHost').onclick = () => hostGame(Number($('hostSide').value), 0);
+$('btnJoin').onclick = () => joinGame($('codeIn').value);
+$('btnLeave').onclick = () => leaveNet(false);
+$('codeIn').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+$('codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
+$('btnCopy').onclick = async () => {
+  const was = $('btnCopy').textContent;
+  try { await navigator.clipboard.writeText($('joinLink').value); $('btnCopy').textContent = 'Copied'; }
+  catch (e) { $('joinLink').select(); $('btnCopy').textContent = 'Press ⌘C / Ctrl+C'; }
+  setTimeout(() => { $('btnCopy').textContent = was; }, 1500);
+};
 
 /* ---------- animation driver ---------- */
 let spin = null, flashState = null, ticking = false;
 const SPIN_MS = 700;
-const FLASH_MS = { shesh: 2000, double6: 2700 };
+const FLASH_MS = { shesh: 2000, double6: 2700, blocked: 3000 };
 function requestTick() { if (!ticking) { ticking = true; requestAnimationFrame(tick); } }
 function tick() {
   ticking = false;
@@ -600,8 +1051,8 @@ function tick() {
   draw();
   if (spin || flashState) requestTick();
 }
-function flash(kind) {
-  flashState = { kind, t0: performance.now() };
+function flash(kind, info) {
+  flashState = { kind, t0: performance.now(), ...(info || {}) };
   if (kind === 'double6') {
     flashState.parts = Array.from({ length: 90 }, () => ({
       a: Math.random() * Math.PI * 2,
@@ -613,9 +1064,10 @@ function flash(kind) {
       delay: Math.random() * 0.06,
     }));
   }
+  if (net.role === 'host') net.fx = { kind, info: info || null, id: ++net.fxSeq };
   requestTick();
 }
-const easeInOut  = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+const easeInOut   = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
 const easeOutBack = t => { const c1 = 2.2, c3 = c1 + 1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); };
 const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 
@@ -657,7 +1109,6 @@ function drawDouble6(p) {
 
   ctx.save(); ctx.globalAlpha = alpha * 0.66; ctx.fillStyle = '#0a0703'; ctx.fillRect(0, 0, W, H); ctx.restore();
 
-  // shockwave rings
   for (let i = 0; i < 3; i++) {
     const t = (p - i * 0.055) / 0.55;
     if (t <= 0 || t >= 1) continue;
@@ -670,7 +1121,6 @@ function drawDouble6(p) {
     ctx.restore();
   }
 
-  // rotating light rays
   ctx.save();
   ctx.globalAlpha = alpha * 0.3 * Math.max(0, 1 - p * 1.25);
   ctx.translate(W/2, H/2); ctx.rotate(p * 1.5);
@@ -683,8 +1133,7 @@ function drawDouble6(p) {
   }
   ctx.restore();
 
-  // particles
-  for (const q of flashState.parts) {
+  for (const q of (flashState.parts || [])) {
     const t = Math.max(0, p - q.delay) / 0.85;
     if (t <= 0 || t >= 1) continue;
     const e = easeOutCubic(t);
@@ -698,7 +1147,6 @@ function drawDouble6(p) {
     ctx.restore();
   }
 
-  // four sixes tumbling in
   const size = 96, gap = 20, total = 4 * size + 3 * gap;
   for (let i = 0; i < 4; i++) {
     const t = Math.min(Math.max((p - 0.04 - i * 0.055) / 0.3, 0), 1);
@@ -715,7 +1163,6 @@ function drawDouble6(p) {
     ctx.restore();
   }
 
-  // headline
   const tt = Math.min(Math.max((p - 0.16) / 0.26, 0), 1);
   if (tt > 0) {
     const s = 0.5 + 0.5 * easeOutBack(tt);
@@ -732,6 +1179,61 @@ function drawDouble6(p) {
     if ('letterSpacing' in ctx) ctx.letterSpacing = '7px';
     ctx.font = '21px Georgia, serif'; ctx.fillStyle = 'rgba(245,225,185,.92)';
     ctx.fillText('TWENTY-FOUR PIPS · FOUR MOVES', 0, 62);
+    ctx.restore();
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  }
+}
+
+function drawBlocked(p) {
+  const alpha = p < 0.06 ? p / 0.06 : (p > 0.82 ? Math.max(0, (1 - p) / 0.18) : 1);
+
+  ctx.save(); ctx.globalAlpha = alpha * 0.72; ctx.fillStyle = '#0b0503'; ctx.fillRect(0, 0, W, H); ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.2 * Math.max(0, 1 - p * 3.4);
+  ctx.fillStyle = '#c01a12'; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  const cx = W/2, cy = H/2 - 34, r = 232;
+  const stroke = (t, x1, y1, x2, y2) => {
+    if (t <= 0) return;
+    const e = easeOutCubic(Math.min(t, 1));
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + (x2 - x1) * e, y1 + (y2 - y1) * e);
+    ctx.stroke();
+  };
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  for (const pass of [{ w: 44, c: 'rgba(40,4,2,.9)', blur: 0 }, { w: 30, c: '#e0201a', blur: 30 }]) {
+    ctx.lineWidth = pass.w; ctx.strokeStyle = pass.c;
+    ctx.shadowColor = 'rgba(255,60,40,.9)'; ctx.shadowBlur = pass.blur;
+    stroke((p - 0.04) / 0.20, cx - r, cy - r, cx + r, cy + r);
+    stroke((p - 0.17) / 0.20, cx + r, cy - r, cx - r, cy + r);
+  }
+  ctx.restore();
+
+  const tt = Math.min(Math.max((p - 0.36) / 0.22, 0), 1);
+  if (tt > 0) {
+    const s = 0.6 + 0.4 * easeOutBack(tt);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy + r + 78); ctx.scale(s, s);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '9px';
+    ctx.font = 'bold 62px Georgia, serif';
+    ctx.shadowColor = 'rgba(255,60,40,.75)'; ctx.shadowBlur = 26;
+    ctx.fillStyle = '#f5cfc6'; ctx.fillText('NO MOVES AVAILABLE', 0, 0);
+    ctx.shadowBlur = 0;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '5px';
+    ctx.font = '20px Georgia, serif';
+    ctx.fillStyle = 'rgba(240,205,195,.9)';
+    ctx.fillText(name(flashState.who).toUpperCase() +
+      (flashState.shutOut ? ' IS SHUT OUT · ALL SIX ENTRY POINTS BLOCKED' : ' IS COMPLETELY BLOCKED'), 0, 52);
+    ctx.font = '18px Georgia, serif';
+    ctx.fillStyle = 'rgba(220,190,150,.8)';
+    ctx.fillText(name(flashState.again).toUpperCase() + ' ROLLS AGAIN', 0, 92);
     ctx.restore();
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   }
@@ -803,7 +1305,6 @@ function drawStack(i) {
 
 function drawDie(x, y, v, s) {
   ctx.save();
-  // keep an outer glow if the caller set one, otherwise use the normal drop shadow
   if (!ctx.shadowBlur) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 9; ctx.shadowOffsetY = 3; }
   ctx.fillStyle = '#f7f1e2';
   const r = s * 0.14;
@@ -884,7 +1385,7 @@ function drawBoard() {
     else emptySlot(RIGHT_X + 78 - size/2, H/2 - size/2, size);
   } else if (S.dice.length) {
     const size = 50, gap = 13;
-    const cx = RIGHT_X + HALF_W/2;
+    const cx = RIGHT_X + HALF_W/2;   // both home boards sit on the tray side
     const total = S.dice.length * size + (S.dice.length - 1) * gap;
     let x = cx - total/2;
     for (const d of S.dice) {
@@ -912,7 +1413,6 @@ function draw() {
     const t = Math.min((performance.now() - spin.t0) / SPIN_MS, 1);
     a = (1 - easeInOut(t)) * Math.PI;
   }
-  // board shake on a double six
   let sx = 0, sy = 0;
   if (flashState && flashState.kind === 'double6') {
     const e = performance.now() - flashState.t0;
@@ -929,12 +1429,16 @@ function draw() {
 
   if (flashState) {
     const p = (performance.now() - flashState.t0) / FLASH_MS[flashState.kind];
-    if (flashState.kind === 'double6') drawDouble6(p); else drawShesh(p);
+    if (flashState.kind === 'double6') drawDouble6(p);
+    else if (flashState.kind === 'blocked') drawBlocked(p);
+    else drawShesh(p);
   }
   renderPips();
+  gate();
+  broadcast();
 }
 
-/* ---------- fit to window, no scrolling ---------- */
+/* ---------- fit to window ---------- */
 const ASPECT = W / H;
 function fitBoard() {
   const stage = $('stage');
@@ -952,7 +1456,22 @@ function fitBoard() {
 }
 window.addEventListener('resize', fitBoard);
 
+/* ---------- boot ---------- */
+loadMatch();
+saveMatch();
 newGame();
+showTab('host');
+netStatus('', '');
+if (!storeOK) $('legend').innerHTML = 'Pips left to bear off.<br>Bar checker = 25.<br><span style="color:#c07a5a">Score can\'t be saved in this browser.</span>';
+
+const joinParam = new URLSearchParams(location.search).get('join');
+if (joinParam) {
+  showTab('join');
+  $('codeIn').value = joinParam.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  $('netModal').hidden = false;
+  joinGame($('codeIn').value);
+}
+
 fitBoard(); fitBoard();
 </script>
 </body>
