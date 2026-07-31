@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backgammon — Josh vs David</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #14100c;
+    font-family: Georgia, 'Times New Roman', serif; color: #e8dcc8; padding: 8px;
+  }
+  #stage { display: flex; flex-direction: column; gap: 7px; }
+
+  /* score strip */
+  #score {
+    display: flex; align-items: stretch; gap: 8px;
+    background: #241a12; border: 1px solid #4a3826; border-radius: 7px; padding: 6px 8px;
+  }
+  .plate {
+    display: flex; align-items: center; gap: 10px; padding: 4px 13px;
+    border-radius: 5px; background: #1b130d; border: 1px solid #372a1c; min-width: 168px;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .plate.active { border-color: #c8a870; box-shadow: 0 0 0 1px rgba(200,168,112,.35) inset; }
+  .who { display: flex; align-items: center; gap: 8px; font-size: 13.5px; letter-spacing: 1px; }
+  .dot { width: 17px; height: 17px; border-radius: 50%; border: 1px solid #000; flex: none; }
+  .dot.w { background: radial-gradient(circle at 32% 30%, #fffdf6, #cbbb98); }
+  .dot.b { background: radial-gradient(circle at 32% 30%, #5a5148, #16120e); }
+  .pts { font-size: 25px; color: #f0e0bc; margin-left: auto; line-height: 1; }
+  #mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  #games { font-size: 10px; letter-spacing: 3px; color: #8a7860; }
+  #last { font-size: 12px; color: #b09a76; }
+  #history { font-size: 10.5px; color: #7d6d56; letter-spacing: .3px; }
+
+  /* board row */
+  #main { display: flex; gap: 8px; align-items: stretch; }
+  #side {
+    width: 138px; flex: none;
+    background: #241a12; border: 1px solid #4a3826; border-radius: 7px;
+    padding: 10px 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #side h3 { margin: 0; font-size: 9.5px; letter-spacing: 2.5px; color: #8a7860; font-weight: normal; text-align: center; }
+  .pip { background: #1b130d; border: 1px solid #372a1c; border-radius: 5px; padding: 7px 9px; transition: border-color .25s; }
+  .pip.active { border-color: #c8a870; }
+  .pip .nm { display: flex; align-items: center; gap: 7px; font-size: 11.5px; letter-spacing: 1px; color: #c0ac8c; }
+  .pip .v { font-size: 27px; color: #f0e0bc; line-height: 1.05; text-align: right; }
+  .pip .d { font-size: 10px; color: #7d6d56; text-align: right; min-height: 13px; }
+  #lead { font-size: 10.5px; color: #9c8a70; text-align: center; line-height: 1.4; border-top: 1px solid #372a1c; padding-top: 8px; }
+  #legend { margin-top: auto; font-size: 9.5px; color: #6f6047; line-height: 1.5; border-top: 1px solid #372a1c; padding-top: 8px; }
+
+  canvas { display: block; border-radius: 7px; box-shadow: 0 14px 44px rgba(0,0,0,.8); cursor: pointer; }
+
+  #panel {
+    display: flex; align-items: center; gap: 9px;
+    background: #241a12; border: 1px solid #4a3826; border-radius: 6px; padding: 7px 12px;
+  }
+  #msg { font-size: 13.5px; flex: 1; }
+  button {
+    font-family: inherit; font-size: 12.5px; letter-spacing: .8px;
+    background: #6b4c2a; color: #f0e4cc; border: 1px solid #8a683c;
+    padding: 7px 15px; border-radius: 4px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { background: #85602f; }
+  button:disabled { opacity: .3; cursor: default; }
+  button.small { font-size: 10.5px; padding: 6px 9px; letter-spacing: .4px; background: #3c2c1a; border-color: #56412a; }
+  select {
+    font-family: inherit; font-size: 10.5px; letter-spacing: .4px;
+    background: #3c2c1a; color: #f0e4cc; border: 1px solid #56412a;
+    padding: 6px 7px; border-radius: 4px; cursor: pointer;
+  }
+  select:disabled { opacity: .3; cursor: default; }
+  .hint { font-size: 11px; color: #7d6d56; letter-spacing: .3px; text-align: center; }
+
+  /* edit-score modal */
+  #modal {
+    position: fixed; inset: 0; background: rgba(10,7,4,.78);
+    display: flex; align-items: center; justify-content: center; z-index: 9;
+  }
+  #modal[hidden] { display: none; }
+  #card {
+    background: #241a12; border: 1px solid #6b4c2a; border-radius: 9px;
+    padding: 20px 22px; width: 300px; display: flex; flex-direction: column; gap: 12px;
+    box-shadow: 0 22px 60px rgba(0,0,0,.75);
+  }
+  #card h3 { margin: 0; font-size: 13px; letter-spacing: 3px; color: #c8a870; font-weight: normal; text-align: center; }
+  #card label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; color: #d8c8a8; }
+  #card input {
+    width: 92px; font-family: inherit; font-size: 17px; text-align: right;
+    background: #1b130d; color: #f0e0bc; border: 1px solid #4a3826; border-radius: 4px; padding: 6px 9px;
+  }
+  #card .btns { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="score">
+    <div class="plate" id="plateW"><span class="who"><span class="dot w"></span>JOSH</span><span class="pts" id="ptsW">0</span></div>
+    <div id="mid">
+      <div id="games">GAME 1</div>
+      <div id="last">Match not started</div>
+      <div id="history"></div>
+    </div>
+    <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto">DAVID<span class="dot b"></span></span></div>
+  </div>
+
+  <div id="main">
+    <div id="side">
+      <h3>PIP COUNT</h3>
+      <div class="pip" id="pipW">
+        <div class="nm"><span class="dot w" style="width:13px;height:13px"></span>JOSH</div>
+        <div class="v" id="pipWv">167</div>
+        <div class="d" id="pipWd"></div>
+      </div>
+      <div class="pip" id="pipB">
+        <div class="nm"><span class="dot b" style="width:13px;height:13px"></span>DAVID</div>
+        <div class="v" id="pipBv">167</div>
+        <div class="d" id="pipBd"></div>
+      </div>
+      <div id="lead">Level</div>
+      <div id="legend">Pips left to bear off.<br>Bar checker = 25.<br>Lower is better.</div>
+    </div>
+    <canvas id="board" width="1120" height="740"></canvas>
+  </div>
+
+  <div id="panel">
+    <span id="msg"></span>
+    <button id="roll">Roll</button>
+    <button id="undo" disabled>Undo</button>
+    <button id="newgame">New Game</button>
+    <select id="starter" title="Override who opens this game">
+      <option value="auto">First move: default</option>
+      <option value="1">First move: Josh</option>
+      <option value="-1">First move: David</option>
+    </select>
+    <button class="small" id="editScore">Edit Score</button>
+    <button class="small" id="resetScore">Reset Match</button>
+  </div>
+  <div class="hint" id="hint">Board faces the player on turn · click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
+</div>
+
+<div id="modal" hidden>
+  <div id="card">
+    <h3>EDIT SCORE</h3>
+    <label>Josh <input id="inW" type="number" min="0" step="1"></label>
+    <label>David <input id="inB" type="number" min="0" step="1"></label>
+    <label>Game # <input id="inG" type="number" min="1" step="1"></label>
+    <div class="btns">
+      <button class="small" id="mCancel">Cancel</button>
+      <button id="mSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('board'), ctx = cv.getContext('2d');
+const W = 1120, H = 740;
+const NAMES = { 1: 'Josh', '-1': 'David' };
+
+/* ---------- geometry ---------- */
+const BORDER = 30, BAR_W = 64, TRAY_W = 74;
+const PLAY_X = BORDER, PLAY_W = W - BORDER * 2 - TRAY_W;
+const HALF_W = (PLAY_W - BAR_W) / 2;
+const PT_W = HALF_W / 6;
+const TOP_Y = BORDER, BOT_Y = H - BORDER;
+const PT_H = (H - BORDER * 2) * 0.42;
+const R = Math.min(PT_W * 0.45, 25);
+const TRAY_X = W - BORDER - TRAY_W + 6;
+const BAR_X = PLAY_X + HALF_W;
+const RIGHT_X = BAR_X + BAR_W;
+
+/* screen slots: 0 = bottom-right … 11 = bottom-far-left, 12 = top-far-left … 23 = top-right */
+function slotCenter(s) {
+  if (s < 6)  return { x: RIGHT_X + (5 - s) * PT_W + PT_W/2, y: BOT_Y, dir: -1 };
+  if (s < 12) return { x: PLAY_X + (11 - s) * PT_W + PT_W/2, y: BOT_Y, dir: -1 };
+  if (s < 18) return { x: PLAY_X + (s - 12) * PT_W + PT_W/2, y: TOP_Y, dir:  1 };
+  return            { x: RIGHT_X + (s - 18) * PT_W + PT_W/2, y: TOP_Y, dir:  1 };
+}
+
+/* logical index 0 = Josh's 1-point, 23 = Josh's 24-point. viewFlip = David is near. */
+let viewFlip = false;
+const toSlot    = i => viewFlip ? 23 - i : i;
+const toLogical = s => viewFlip ? 23 - s : s;
+const nearPlayer = () => viewFlip ? -1 : 1;
+
+/* ---------- state ---------- */
+let match = { W: 0, B: 0, game: 1, log: [], lastWinner: null };
+let S;
+
+const $ = id => document.getElementById(id);
+const msg = t => $('msg').textContent = t;
+const name = c => NAMES[c];
+const avail = () => S.dice.filter(d => !d.used).map(d => d.v);
+
+function newGame() {
+  S = {
+    pts: Array.from({length:24}, () => ({ c: 0, n: 0 })),
+    bar: { 1: 0, '-1': 0 },
+    off: { 1: 0, '-1': 0 },
+    turn: 1,
+    dice: [], sel: null, history: [],
+    phase: 'opening',
+    open: { w: null, b: null },
+  };
+  // Josh moves 23 -> 0 ; David moves 0 -> 23
+  [[23,1,2],[12,1,5],[7,1,3],[5,1,5],[0,-1,2],[11,-1,5],[16,-1,3],[18,-1,5]]
+    .forEach(([p,c,n]) => S.pts[p] = { c, n });
+  spin = null; flashState = null;
+  $('roll').disabled = false;
+  $('undo').disabled = true;
+
+  $('starter').value = 'auto';
+
+  if (match.lastWinner) {
+    // only the first game of a match is decided by single dice — after that the
+    // previous game's winner opens, rolling two dice as normal
+    startWith(match.lastWinner, name(match.lastWinner) + ' won the last game and starts.');
+  } else {
+    openingPrompt();
+  }
+  viewFlip = S.phase === 'play' && S.turn === -1;
+  refreshControls();
+  renderScore();
+  draw();
+}
+
+/* skip the opening roll and hand the first move to a chosen player */
+function startWith(c, text) {
+  S.phase = 'play';
+  S.turn = c;
+  S.dice = [];
+  S.open = { w: null, b: null };
+  S.sel = null;
+  S.history = [];
+  $('roll').textContent = 'Roll';
+  $('roll').disabled = false;
+  $('undo').disabled = true;
+  msg(text || (name(c) + ' opens — roll.'));
+}
+
+/* the starter override stays live until the first dice of the game are on the board */
+function refreshControls() {
+  $('starter').disabled = S.phase === 'over' || (S.phase === 'play' && S.dice.length > 0);
+}
+
+function openingPrompt() {
+  if (S.open.w === null)      { $('roll').textContent = 'Josh Rolls';  msg('Opening roll — Josh rolls one die.'); }
+  else if (S.open.b === null) { $('roll').textContent = 'David Rolls'; msg('Josh rolled ' + S.open.w + '. David rolls one die.'); }
+}
+
+/* ---------- pip count ---------- */
+function pipCount(c) {
+  let t = S.bar[c] * 25;
+  for (let i = 0; i < 24; i++) if (S.pts[i].c === c && S.pts[i].n) t += S.pts[i].n * (c === 1 ? i + 1 : 24 - i);
+  return t;
+}
+let pipCache = '';
+function renderPips() {
+  const w = pipCount(1), b = pipCount(-1);
+  const key = w + '/' + b + '/' + S.turn + '/' + S.phase;
+  if (key === pipCache) return;
+  pipCache = key;
+  $('pipWv').textContent = w;
+  $('pipBv').textContent = b;
+  $('pipWd').textContent = w < b ? '−' + (b - w) : (w > b ? '+' + (w - b) : '—');
+  $('pipBd').textContent = b < w ? '−' + (w - b) : (b > w ? '+' + (b - w) : '—');
+  $('pipW').classList.toggle('active', S.phase === 'play' && S.turn === 1);
+  $('pipB').classList.toggle('active', S.phase === 'play' && S.turn === -1);
+  $('lead').textContent = w === b ? 'Level' : (w < b ? 'Josh leads by ' + (b - w) : 'David leads by ' + (w - b));
+}
+
+function renderScore() {
+  $('ptsW').textContent = match.W;
+  $('ptsB').textContent = match.B;
+  $('games').textContent = 'GAME ' + match.game;
+  $('plateW').classList.toggle('active', S && S.phase === 'play' && S.turn === 1);
+  $('plateB').classList.toggle('active', S && S.phase === 'play' && S.turn === -1);
+  $('last').textContent = match.log.length ? match.log[match.log.length - 1].full : 'Match not started';
+  $('history').textContent = match.log.slice(-8).map(l => l.short).join('   ');
+  pipCache = ''; renderPips();
+}
+
+/* ---------- rules (board-generic so sequences can be simulated) ---------- */
+const cloneB = b => ({ pts: b.pts.map(p => ({ c: p.c, n: p.n })), bar: { ...b.bar }, off: { ...b.off } });
+const live = () => ({ pts: S.pts, bar: S.bar, off: S.off });
+
+function homeAllB(b, c) {
+  if (b.bar[c] > 0) return false;
+  for (let i = 0; i < 24; i++) {
+    const p = b.pts[i];
+    if (p.c === c && p.n > 0) {
+      if (c === 1 && i > 5) return false;
+      if (c === -1 && i < 18) return false;
+    }
+  }
+  return true;
+}
+function canLandB(b, idx, c) {
+  if (idx < 0 || idx > 23) return false;
+  const p = b.pts[idx];
+  return p.n === 0 || p.c === c || p.n === 1;
+}
+const destOf = (from, die, c) =>
+  from === 'bar' ? (c === 1 ? 24 - die : die - 1) : (c === 1 ? from - die : from + die);
+
+function movesB(b, c, dice) {
+  const out = [];
+  for (const d of [...new Set(dice)]) {
+    if (b.bar[c] > 0) {
+      const t = destOf('bar', d, c);
+      if (canLandB(b, t, c)) out.push({ from: 'bar', die: d, to: t });
+      continue;
+    }
+    for (let i = 0; i < 24; i++) {
+      if (b.pts[i].c !== c || b.pts[i].n === 0) continue;
+      const t = destOf(i, d, c);
+      if (t >= 0 && t <= 23) { if (canLandB(b, t, c)) out.push({ from: i, die: d, to: t }); }
+      else if (homeAllB(b, c)) {
+        const need = c === 1 ? i + 1 : 24 - i;
+        if (d === need) out.push({ from: i, die: d, to: 'off' });
+        else if (d > need) {
+          let further = false;
+          if (c === 1) { for (let k = i + 1; k <= 5; k++) if (b.pts[k].c === c && b.pts[k].n) further = true; }
+          else { for (let k = i - 1; k >= 18; k--) if (b.pts[k].c === c && b.pts[k].n) further = true; }
+          if (!further) out.push({ from: i, die: d, to: 'off' });
+        }
+      }
+    }
+  }
+  return out;
+}
+const legalMoves = c => movesB(live(), c, avail());
+
+function applyB(b, c, m) {
+  if (m.from === 'bar') b.bar[c]--;
+  else { b.pts[m.from].n--; if (!b.pts[m.from].n) b.pts[m.from].c = 0; }
+  if (m.to === 'off') b.off[c]++;
+  else {
+    const p = b.pts[m.to];
+    if (p.c === -c && p.n === 1) { p.n = 0; p.c = 0; b.bar[-c]++; }
+    p.c = c; p.n++;
+  }
+}
+
+/* every destination reachable from `origin`, chaining dice through legal
+   intermediate points — 3 then 4 gets you 7 provided the 3 lands somewhere legal */
+function pathsFrom(origin) {
+  const c = S.turn, res = new Map();
+  (function rec(b, pos, dice, seq) {
+    if (!dice.length) return;
+    for (const d of [...new Set(dice)]) {
+      for (const m of movesB(b, c, [d])) {
+        if (m.from !== pos) continue;
+        const nseq = [...seq, m];
+        const prev = res.get(m.to);
+        if (!prev || prev.length > nseq.length) res.set(m.to, nseq);
+        if (m.to !== 'off') {
+          const nb = cloneB(b); applyB(nb, c, m);
+          const rest = [...dice]; rest.splice(rest.indexOf(d), 1);
+          rec(nb, m.to, rest, nseq);
+        }
+      }
+    }
+  })(cloneB(live()), origin, avail(), []);
+  return res;
+}
+
+const snapshot = () => JSON.stringify({ pts: S.pts, bar: S.bar, off: S.off, dice: S.dice });
+function restore(s) { const o = JSON.parse(s); S.pts = o.pts; S.bar = o.bar; S.off = o.off; S.dice = o.dice; }
+
+/* a whole sequence is one undo step */
+function applySequence(seq) {
+  S.history.push(snapshot());
+  for (const m of seq) {
+    applyB(live(), S.turn, m);
+    const d = S.dice.find(x => !x.used && x.v === m.die);
+    if (d) d.used = true;
+  }
+  $('undo').disabled = false;
+}
+
+/* 1 single · 2 gammon · 3 backgammon (home board) · 4 loser still on the bar */
+function scoreGame(winner) {
+  const l = -winner;
+  if (S.off[l] > 0) return { pts: 1, label: 'single' };
+  if (S.bar[l] > 0) return { pts: 4, label: 'backgammon, on the bar' };
+  const lo = winner === 1 ? 0 : 18, hi = winner === 1 ? 5 : 23;
+  for (let i = lo; i <= hi; i++) if (S.pts[i].c === l && S.pts[i].n) return { pts: 3, label: 'backgammon' };
+  return { pts: 2, label: 'gammon' };
+}
+
+function endGame(winner) {
+  const r = scoreGame(winner);
+  if (winner === 1) match.W += r.pts; else match.B += r.pts;
+  match.log.push({
+    full: 'Game ' + match.game + ' — ' + name(winner) + ' +' + r.pts + ' (' + r.label + ')',
+    short: 'G' + match.game + ' ' + (winner === 1 ? 'J' : 'D') + '+' + r.pts
+  });
+  match.game++;
+  match.lastWinner = winner;
+  S.phase = 'over';
+  refreshControls();
+  msg(name(winner) + ' wins ' + r.pts + ' point' + (r.pts > 1 ? 's' : '') + ' — ' + r.label + '.');
+  $('roll').disabled = true;
+  $('undo').disabled = true;
+  renderScore();
+  draw();
+}
+
+function afterMove() {
+  const c = S.turn;
+  if (S.off[c] === 15) { endGame(c); return; }
+  renderPips();
+  if (avail().length === 0) { draw(); setTimeout(endTurn, 320); return; }
+  if (legalMoves(c).length === 0) {
+    msg(name(c) + ': no further legal moves.');
+    draw();
+    setTimeout(endTurn, 1100);
+    return;
+  }
+  msg(name(c) + ' to move — ' + avail().join(', '));
+  draw();
+}
+
+function endTurn() {
+  if (S.phase !== 'play') return;
+  S.turn = -S.turn;
+  S.dice = []; S.sel = null; S.history = [];
+  $('roll').disabled = false;
+  $('undo').disabled = true;
+  msg(name(S.turn) + ' to roll.');
+  renderScore();
+  faceCurrentPlayer();
+}
+
+function faceCurrentPlayer() {
+  const want = S.phase === 'play' && S.turn === -1;
+  if (want !== viewFlip) { viewFlip = want; spin = { t0: performance.now() }; requestTick(); }
+  else draw();
+}
+
+const d6 = () => 1 + Math.floor(Math.random() * 6);
+const isSheshBesh = v => v.length === 2 && v.includes(6) && v.includes(5);
+
+/* ---------- opening roll, one die at a time ---------- */
+function openingStep() {
+  if (S.open.w === null) { S.open.w = d6(); openingPrompt(); draw(); return; }
+  S.open.b = d6();
+  draw();
+  const { w, b } = S.open;
+  if (w === b) {
+    msg('Both rolled ' + w + ' — tie. Roll again.');
+    $('roll').textContent = 'Re-roll';
+    setTimeout(() => { S.open = { w: null, b: null }; openingPrompt(); draw(); }, 1400);
+    return;
+  }
+  const winner = w > b ? 1 : -1;
+  S.turn = winner;
+  S.phase = 'play';
+  S.dice = [{ v: w, used: false }, { v: b, used: false }];
+  S.history = [];
+  $('roll').textContent = 'Roll';
+  $('roll').disabled = true;
+  msg(name(winner) + ' wins the opening roll (' + w + '–' + b + ') and plays ' + w + ' and ' + b + '.');
+  refreshControls();
+  renderScore();
+  faceCurrentPlayer();
+  if (isSheshBesh([w, b])) flash('shesh');
+}
+
+function roll() {
+  if (S.phase === 'opening') { openingStep(); return; }
+  const a = d6(), b = d6();
+  S.dice = a === b ? [a,a,a,a].map(v => ({ v, used: false }))
+                   : [{ v: a, used: false }, { v: b, used: false }];
+  S.open = { w: null, b: null };
+  S.history = [];
+  $('roll').disabled = true;
+  $('undo').disabled = true;
+  refreshControls();
+  const tag = a === b ? ' (doubles)' : '';
+  if (a === 6 && b === 6) flash('double6');
+  else if (isSheshBesh([a, b])) flash('shesh');
+  if (legalMoves(S.turn).length === 0) {
+    msg(name(S.turn) + ' rolled ' + a + '–' + b + tag + ' — no legal moves.');
+    draw();
+    setTimeout(endTurn, 1500);
+    return;
+  }
+  msg(name(S.turn) + ' rolled ' + a + '–' + b + tag + '.');
+  draw();
+}
+
+/* ---------- interaction ---------- */
+cv.addEventListener('click', e => {
+  if (S.phase !== 'play' || spin || avail().length === 0) return;
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
+  const hit = hitTest(x, y);
+  if (hit === null) return;
+  const c = S.turn;
+
+  if (S.sel === null) {
+    if (S.bar[c] > 0) { if (hit === 'bar') { S.sel = 'bar'; draw(); } return; }
+    if (typeof hit === 'number' && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+    return;
+  }
+
+  const paths = pathsFrom(S.sel);
+
+  // second click on the same checker = bear it off, if that's legal
+  if (hit === S.sel) {
+    if (paths.has('off')) { applySequence(paths.get('off')); S.sel = null; afterMove(); }
+    else { S.sel = null; draw(); }
+    return;
+  }
+
+  if (paths.has(hit)) { applySequence(paths.get(hit)); S.sel = null; afterMove(); return; }
+
+  if (typeof hit === 'number' && S.bar[c] === 0 && S.pts[hit].c === c && S.pts[hit].n > 0) { S.sel = hit; draw(); }
+});
+
+function hitTest(x, y) {
+  if (x > TRAY_X - 6) return 'off';
+  if (x >= BAR_X && x <= RIGHT_X) return 'bar';
+  if (y < TOP_Y || y > BOT_Y) return null;
+  const top = y < H / 2;
+  const left = x < BAR_X;
+  const col = Math.floor((left ? (x - PLAY_X) : (x - RIGHT_X)) / PT_W);
+  if (col < 0 || col > 5) return null;
+  const s = top ? (left ? 12 + col : 18 + col) : (left ? 11 - col : 5 - col);
+  return toLogical(s);
+}
+
+$('roll').onclick = roll;
+$('newgame').onclick = newGame;
+$('undo').onclick = () => {
+  if (!S.history.length) return;
+  restore(S.history.pop());
+  S.sel = null;
+  if (!S.history.length) $('undo').disabled = true;
+  msg(name(S.turn) + ' to move — ' + avail().join(', '));
+  renderPips();
+  draw();
+};
+$('resetScore').onclick = () => { match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; newGame(); };
+
+$('starter').onchange = e => {
+  const v = e.target.value;
+  if (v === 'auto') {
+    if (match.lastWinner) startWith(match.lastWinner, name(match.lastWinner) + ' won the last game and starts.');
+    else {
+      S.phase = 'opening';
+      S.open = { w: null, b: null };
+      S.dice = []; S.sel = null; S.history = [];
+      $('roll').disabled = false; $('undo').disabled = true;
+      openingPrompt();
+    }
+  } else {
+    startWith(Number(v), name(Number(v)) + ' opens this game by override — roll.');
+  }
+  refreshControls();
+  renderScore();
+  faceCurrentPlayer();
+};
+
+/* edit score */
+$('editScore').onclick = () => {
+  $('inW').value = match.W; $('inB').value = match.B; $('inG').value = match.game;
+  $('modal').hidden = false; $('inW').focus(); $('inW').select();
+};
+$('mCancel').onclick = () => { $('modal').hidden = true; };
+$('mSave').onclick = () => {
+  const n = (el, min) => Math.max(min, Math.round(Number(el.value) || 0));
+  match.W = n($('inW'), 0); match.B = n($('inB'), 0); match.game = n($('inG'), 1);
+  $('modal').hidden = true;
+  renderScore();
+};
+$('modal').addEventListener('click', e => { if (e.target === $('modal')) $('modal').hidden = true; });
+document.addEventListener('keydown', e => {
+  if ($('modal').hidden) return;
+  if (e.key === 'Escape') $('modal').hidden = true;
+  if (e.key === 'Enter') $('mSave').click();
+});
+
+/* ---------- animation driver ---------- */
+let spin = null, flashState = null, ticking = false;
+const SPIN_MS = 700;
+const FLASH_MS = { shesh: 2000, double6: 2700 };
+function requestTick() { if (!ticking) { ticking = true; requestAnimationFrame(tick); } }
+function tick() {
+  ticking = false;
+  const now = performance.now();
+  if (spin && now - spin.t0 >= SPIN_MS) spin = null;
+  if (flashState && now - flashState.t0 >= FLASH_MS[flashState.kind]) flashState = null;
+  draw();
+  if (spin || flashState) requestTick();
+}
+function flash(kind) {
+  flashState = { kind, t0: performance.now() };
+  if (kind === 'double6') {
+    flashState.parts = Array.from({ length: 90 }, () => ({
+      a: Math.random() * Math.PI * 2,
+      sp: 200 + Math.random() * 620,
+      sz: 3 + Math.random() * 10,
+      rot: Math.random() * 6.28,
+      vr: (Math.random() - 0.5) * 14,
+      warm: Math.random(),
+      delay: Math.random() * 0.06,
+    }));
+  }
+  requestTick();
+}
+const easeInOut  = t => t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+const easeOutBack = t => { const c1 = 2.2, c3 = c1 + 1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); };
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+/* ---------- overlays ---------- */
+function goldGrad(h) {
+  const g = ctx.createLinearGradient(0, -h/2, 0, h/2);
+  g.addColorStop(0, '#ffeeb8'); g.addColorStop(0.45, '#f0c463');
+  g.addColorStop(0.55, '#c99027'); g.addColorStop(1, '#f4d98c');
+  return g;
+}
+
+function drawShesh(p) {
+  const alpha = p < 0.08 ? p / 0.08 : (p > 0.7 ? Math.max(0, (1 - p) / 0.3) : 1);
+  const scale = 0.45 + 0.55 * easeOutBack(Math.min(p / 0.22, 1));
+  const lift  = -46 * Math.max(0, (p - 0.7) / 0.3);
+  const wob   = Math.sin(p * 22) * 0.012 * Math.exp(-5 * p);
+
+  ctx.save(); ctx.globalAlpha = alpha * 0.55; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(W/2, H/2 + lift); ctx.rotate(wob); ctx.scale(scale, scale);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '10px';
+  ctx.font = 'bold 92px Georgia, serif';
+  ctx.shadowColor = 'rgba(255,190,80,.85)'; ctx.shadowBlur = 34;
+  ctx.fillStyle = goldGrad(100); ctx.fillText('SHESH BESH', 0, 0);
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(60,26,8,.9)'; ctx.strokeText('SHESH BESH', 0, 0);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '6px';
+  ctx.font = '22px Georgia, serif'; ctx.fillStyle = 'rgba(240,220,180,.9)';
+  ctx.fillText('SIX AND FIVE', 0, 66);
+  ctx.restore();
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+}
+
+function drawDouble6(p) {
+  const alpha = p < 0.05 ? p / 0.05 : (p > 0.76 ? Math.max(0, (1 - p) / 0.24) : 1);
+
+  ctx.save(); ctx.globalAlpha = alpha * 0.66; ctx.fillStyle = '#0a0703'; ctx.fillRect(0, 0, W, H); ctx.restore();
+
+  // shockwave rings
+  for (let i = 0; i < 3; i++) {
+    const t = (p - i * 0.055) / 0.55;
+    if (t <= 0 || t >= 1) continue;
+    const rad = easeOutCubic(t) * 760;
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * 0.7 * alpha;
+    ctx.strokeStyle = i === 1 ? '#ffd97a' : '#e0a33c';
+    ctx.lineWidth = 9 * (1 - t) + 1;
+    ctx.beginPath(); ctx.arc(W/2, H/2, rad, 0, 7); ctx.stroke();
+    ctx.restore();
+  }
+
+  // rotating light rays
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.3 * Math.max(0, 1 - p * 1.25);
+  ctx.translate(W/2, H/2); ctx.rotate(p * 1.5);
+  for (let i = 0; i < 16; i++) {
+    ctx.rotate(Math.PI * 2 / 16);
+    const g = ctx.createLinearGradient(0, 0, 720, 0);
+    g.addColorStop(0, 'rgba(255,214,120,.95)'); g.addColorStop(1, 'rgba(255,190,80,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(720, -34); ctx.lineTo(720, 34); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+
+  // particles
+  for (const q of flashState.parts) {
+    const t = Math.max(0, p - q.delay) / 0.85;
+    if (t <= 0 || t >= 1) continue;
+    const e = easeOutCubic(t);
+    const x = W/2 + Math.cos(q.a) * q.sp * e;
+    const y = H/2 + Math.sin(q.a) * q.sp * e + 300 * t * t;
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * alpha;
+    ctx.translate(x, y); ctx.rotate(q.rot + q.vr * t);
+    ctx.fillStyle = q.warm > 0.55 ? '#ffe6a4' : (q.warm > 0.25 ? '#e8a83a' : '#a8331f');
+    ctx.fillRect(-q.sz/2, -q.sz/2, q.sz, q.sz * 0.7);
+    ctx.restore();
+  }
+
+  // four sixes tumbling in
+  const size = 96, gap = 20, total = 4 * size + 3 * gap;
+  for (let i = 0; i < 4; i++) {
+    const t = Math.min(Math.max((p - 0.04 - i * 0.055) / 0.3, 0), 1);
+    if (t <= 0) continue;
+    const s = 0.2 + 0.8 * easeOutBack(t);
+    const rot = (1 - t) * (i % 2 ? -3.4 : 3.4);
+    const cx = W/2 - total/2 + i * (size + gap) + size/2;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, H/2 - 26);
+    ctx.rotate(rot); ctx.scale(s, s);
+    ctx.shadowColor = 'rgba(255,180,60,.75)'; ctx.shadowBlur = 26;
+    drawDie(-size/2, -size/2, 6, size);
+    ctx.restore();
+  }
+
+  // headline
+  const tt = Math.min(Math.max((p - 0.16) / 0.26, 0), 1);
+  if (tt > 0) {
+    const s = 0.5 + 0.5 * easeOutBack(tt);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(W/2, H/2 + 128); ctx.scale(s, s);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '12px';
+    ctx.font = 'bold 78px Georgia, serif';
+    ctx.shadowColor = 'rgba(255,180,60,.9)'; ctx.shadowBlur = 40;
+    ctx.fillStyle = goldGrad(86); ctx.fillText('DOUBLE SIX', 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(60,26,8,.9)'; ctx.strokeText('DOUBLE SIX', 0, 0);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '7px';
+    ctx.font = '21px Georgia, serif'; ctx.fillStyle = 'rgba(245,225,185,.92)';
+    ctx.fillText('TWENTY-FOUR PIPS · FOUR MOVES', 0, 62);
+    ctx.restore();
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  }
+}
+
+/* ---------- board rendering ---------- */
+function woodGrain(g, x, y, w, h, base, seed) {
+  g.save();
+  g.beginPath(); g.rect(x, y, w, h); g.clip();
+  g.fillStyle = base; g.fillRect(x, y, w, h);
+  let s = seed;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < h * 1.2; i++) {
+    const yy = y + rnd() * h;
+    g.globalAlpha = 0.03 + rnd() * 0.06;
+    g.strokeStyle = rnd() > 0.5 ? '#000' : '#fff';
+    g.lineWidth = 0.5 + rnd() * 1.6;
+    g.beginPath();
+    g.moveTo(x, yy);
+    g.bezierCurveTo(x + w*0.3, yy + (rnd()-0.5)*10, x + w*0.7, yy + (rnd()-0.5)*10, x + w, yy + (rnd()-0.5)*6);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  g.restore();
+}
+
+function drawPointSlot(s) {
+  const { x, y, dir } = slotCenter(s);
+  const g = ctx.createLinearGradient(x, y, x, y + dir * PT_H);
+  if (s % 2 === 0) { g.addColorStop(0, '#7d1f18'); g.addColorStop(1, '#4a120e'); }
+  else { g.addColorStop(0, '#e6d5b0'); g.addColorStop(1, '#b39a73'); }
+  ctx.beginPath();
+  ctx.moveTo(x - PT_W/2 + 2, y);
+  ctx.lineTo(x + PT_W/2 - 2, y);
+  ctx.lineTo(x, y + dir * PT_H);
+  ctx.closePath();
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function checkerAt(x, y, c, glow) {
+  const g = ctx.createRadialGradient(x - R*0.35, y - R*0.35, R*0.1, x, y, R);
+  if (c === 1) { g.addColorStop(0, '#fffdf6'); g.addColorStop(0.6, '#ece0c8'); g.addColorStop(1, '#b8a684'); }
+  else { g.addColorStop(0, '#5a5148'); g.addColorStop(0.6, '#2c2620'); g.addColorStop(1, '#100d0a'); }
+  ctx.beginPath(); ctx.arc(x, y + 2, R, 0, 7); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = c === 1 ? '#9c8a68' : '#000'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, R*0.6, 0, 7);
+  ctx.strokeStyle = c === 1 ? 'rgba(150,130,95,.5)' : 'rgba(120,110,95,.35)'; ctx.lineWidth = 1; ctx.stroke();
+  if (glow) { ctx.beginPath(); ctx.arc(x, y, R + 3.5, 0, 7); ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3.5; ctx.stroke(); }
+}
+
+function drawStack(i) {
+  const p = S.pts[i];
+  if (!p.n) return;
+  const { x, y, dir } = slotCenter(toSlot(i));
+  const max = 5;
+  const step = Math.min(R * 2 + 1, (PT_H - R) / (max - 1));
+  const shown = Math.min(p.n, max);
+  for (let k = 0; k < shown; k++)
+    checkerAt(x, y + dir * (R + 4 + k * step), p.c, S.sel === i && k === shown - 1);
+  if (p.n > max) {
+    ctx.font = 'bold ' + Math.round(R * 0.95) + 'px Georgia';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = p.c === 1 ? '#3a2f1e' : '#f0e4cc';
+    ctx.fillText(p.n, x, y + dir * (R + 4 + (shown - 1) * step));
+  }
+}
+
+function drawDie(x, y, v, s) {
+  ctx.save();
+  // keep an outer glow if the caller set one, otherwise use the normal drop shadow
+  if (!ctx.shadowBlur) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 9; ctx.shadowOffsetY = 3; }
+  ctx.fillStyle = '#f7f1e2';
+  const r = s * 0.14;
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+s-r,y); ctx.quadraticCurveTo(x+s,y,x+s,y+r);
+  ctx.lineTo(x+s,y+s-r); ctx.quadraticCurveTo(x+s,y+s,x+s-r,y+s);
+  ctx.lineTo(x+r,y+s); ctx.quadraticCurveTo(x,y+s,x,y+s-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.fillStyle = '#3a1410';
+  const q = s/4;
+  const pips = { 1:[[2,2]], 2:[[1,1],[3,3]], 3:[[1,1],[2,2],[3,3]],
+                 4:[[1,1],[3,1],[1,3],[3,3]], 5:[[1,1],[3,1],[2,2],[1,3],[3,3]],
+                 6:[[1,1],[3,1],[1,2],[3,2],[1,3],[3,3]] };
+  for (const [a,b] of pips[v]) { ctx.beginPath(); ctx.arc(x+a*q, y+b*q, s*0.075, 0, 7); ctx.fill(); }
+  ctx.restore();
+}
+
+function emptySlot(x, y, s) {
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = 'rgba(240,225,195,.28)'; ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, s, s);
+  ctx.restore();
+}
+
+function drawBoard() {
+  woodGrain(ctx, 0, 0, W, H, '#5a3a1e', 7);
+  ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, W-3, H-3);
+
+  woodGrain(ctx, PLAY_X, TOP_Y, PLAY_W, H - BORDER*2, '#3f2a17', 21);
+  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 2;
+  ctx.strokeRect(PLAY_X, TOP_Y, PLAY_W, H - BORDER*2);
+
+  for (let s = 0; s < 24; s++) drawPointSlot(s);
+
+  woodGrain(ctx, BAR_X, TOP_Y, BAR_W, H - BORDER*2, '#5f3f21', 99);
+  ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 2;
+  ctx.strokeRect(BAR_X, TOP_Y, BAR_W, H - BORDER*2);
+
+  woodGrain(ctx, TRAY_X - 6, TOP_Y, TRAY_W, H - BORDER*2, '#4a3018', 55);
+  ctx.strokeRect(TRAY_X - 6, TOP_Y, TRAY_W, H - BORDER*2);
+  ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(TRAY_X - 6, H/2); ctx.lineTo(TRAY_X - 6 + TRAY_W, H/2); ctx.stroke();
+
+  for (let i = 0; i < 24; i++) drawStack(i);
+
+  const near = nearPlayer(), bcx = BAR_X + BAR_W/2;
+  for (let k = 0; k < S.bar[near]; k++)
+    checkerAt(bcx, H/2 + 48 + k * R * 1.1, near, S.sel === 'bar' && S.turn === near && k === S.bar[near] - 1);
+  for (let k = 0; k < S.bar[-near]; k++)
+    checkerAt(bcx, H/2 - 48 - k * R * 1.1, -near, S.sel === 'bar' && S.turn === -near && k === S.bar[-near] - 1);
+
+  const tcx = TRAY_X - 6 + TRAY_W/2;
+  const slab = (c, y) => {
+    ctx.fillStyle = c === 1 ? '#e8dcc0' : '#241f1a';
+    ctx.strokeStyle = c === 1 ? '#8a7a58' : '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.rect(tcx - R, y, R*2, 10); ctx.fill(); ctx.stroke();
+  };
+  for (let k = 0; k < S.off[near]; k++)  slab(near, BOT_Y - 17 - k*12);
+  for (let k = 0; k < S.off[-near]; k++) slab(-near, TOP_Y + 7 + k*12);
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  if (S.phase === 'opening') {
+    const size = 52;
+    ctx.font = '13px Georgia'; ctx.fillStyle = 'rgba(240,225,195,.8)';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+    ctx.fillText('JOSH',  BAR_X - 78, H/2 - 48);
+    ctx.fillText('DAVID', RIGHT_X + 78, H/2 - 48);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    if (S.open.w !== null) drawDie(BAR_X - 78 - size/2, H/2 - size/2, S.open.w, size);
+    else emptySlot(BAR_X - 78 - size/2, H/2 - size/2, size);
+    if (S.open.b !== null) drawDie(RIGHT_X + 78 - size/2, H/2 - size/2, S.open.b, size);
+    else emptySlot(RIGHT_X + 78 - size/2, H/2 - size/2, size);
+  } else if (S.dice.length) {
+    const size = 50, gap = 13;
+    const cx = RIGHT_X + HALF_W/2;
+    const total = S.dice.length * size + (S.dice.length - 1) * gap;
+    let x = cx - total/2;
+    for (const d of S.dice) {
+      ctx.globalAlpha = d.used ? 0.3 : 1;
+      drawDie(x, H/2 - size/2, d.v, size);
+      ctx.globalAlpha = 1;
+      x += size + gap;
+    }
+  }
+
+  ctx.font = '14px Georgia'; ctx.fillStyle = 'rgba(240,225,195,.75)';
+  ctx.save(); ctx.translate(W - 13, H/2); ctx.rotate(-Math.PI/2);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  ctx.fillText(S.phase === 'play' ? (name(S.turn).toUpperCase() + '’S TURN') : '', 0, 0);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.restore();
+}
+
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  let a = 0;
+  if (spin) {
+    const t = Math.min((performance.now() - spin.t0) / SPIN_MS, 1);
+    a = (1 - easeInOut(t)) * Math.PI;
+  }
+  // board shake on a double six
+  let sx = 0, sy = 0;
+  if (flashState && flashState.kind === 'double6') {
+    const e = performance.now() - flashState.t0;
+    const amp = 15 * Math.exp(-e / 260);
+    sx = Math.sin(e * 0.075) * amp;
+    sy = Math.cos(e * 0.091) * amp;
+  }
+
+  ctx.save();
+  if (sx || sy) ctx.translate(sx, sy);
+  if (a) { ctx.translate(W/2, H/2); ctx.rotate(a); ctx.translate(-W/2, -H/2); }
+  drawBoard();
+  ctx.restore();
+
+  if (flashState) {
+    const p = (performance.now() - flashState.t0) / FLASH_MS[flashState.kind];
+    if (flashState.kind === 'double6') drawDouble6(p); else drawShesh(p);
+  }
+  renderPips();
+}
+
+/* ---------- fit to window, no scrolling ---------- */
+const ASPECT = W / H;
+function fitBoard() {
+  const stage = $('stage');
+  stage.style.width = 'auto';
+  cv.style.width = '0px'; cv.style.height = '0px';
+  const chrome = $('score').offsetHeight + $('panel').offsetHeight + $('hint').offsetHeight;
+  const availH = window.innerHeight - 16 - chrome - 21;
+  const availW = window.innerWidth - 16 - $('side').offsetWidth - 8;
+  let w = Math.min(availW, 1180), h = w / ASPECT;
+  if (h > availH) { h = availH; w = h * ASPECT; }
+  w = Math.max(w, 460); h = w / ASPECT;
+  cv.style.width = Math.round(w) + 'px';
+  cv.style.height = Math.round(h) + 'px';
+  stage.style.width = Math.round(w + $('side').offsetWidth + 8) + 'px';
+}
+window.addEventListener('resize', fitBoard);
+
+newGame();
+fitBoard(); fitBoard();
+</script>
+</body>
+</html>
