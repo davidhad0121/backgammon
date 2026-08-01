@@ -933,12 +933,33 @@ function act(a) {
   applyAct(a, myColor);
 }
 
-/* A guest's action has to arrive or the game silently stalls, so we keep the
-   last one pending until a fresh state proves the host acted on it. */
+/* Moves are queued and sent one at a time. Nothing leaves the queue until the
+   host acknowledges that exact move, so a lost message is always resent and a
+   quick second move can never be mistaken for a stale one. */
+const MAX_OUTBOX = 4;
 function sendAct(a) {
+  if (net.outbox.length >= MAX_OUTBOX) {
+    // the link is struggling; refuse new moves rather than banking them up to
+    // replay in a rush once it recovers
+    netStatus('Still sending your last move — hold on.', 'wait');
+    toast('Connection is lagging — waiting for your move to land.', true);
+    return;
+  }
   net.actId++;
-  net.pending = { msg: { t: 'act', a, id: net.actId, base: net.lastSeq }, tries: 0, at: Date.now() };
-  relaySend(net.pending.msg);
+  net.outbox.push({ t: 'act', a, id: net.actId });
+  pumpOutbox();
+}
+function pumpOutbox() {
+  if (net.inflight || !net.outbox.length) return;
+  const msg = net.outbox.shift();
+  net.inflight = { msg, tries: 0, at: Date.now() };
+  relaySend(msg);
+}
+function onAck(ack) {
+  if (typeof ack !== 'number') return;
+  if (net.inflight && ack >= net.inflight.msg.id) net.inflight = null;
+  while (net.outbox.length && net.outbox[0].id <= ack) net.outbox.shift();
+  pumpOutbox();
 }
 function applyAct(a, who) {
   switch (a.type) {
@@ -1013,6 +1034,9 @@ function doMove(from, to, who) {
    Picking a checker up is purely visual, so it stays local and feels instant
    even online. Only the completed move travels. */
 function localClick(hit) {
+  // never let an animation flag wedge input: if it has outlived its duration,
+  // drop it rather than swallowing the tap
+  if (spin && performance.now() - spin.t0 >= SPIN_MS) spin = null;
   if (!S || S.phase !== 'play' || spin || avail().length === 0) return;
   const c = S.turn;
   if (myColor !== null && c !== myColor) return;
@@ -1044,6 +1068,7 @@ function localClick(hit) {
 }
 
 cv.addEventListener('click', e => {
+  if (net.role && !net.paired) { forceResync(); return; }   // don't pretend a tap did something
   const r = cv.getBoundingClientRect();
   const x = (e.clientX - r.left) * (W / r.width), y = (e.clientY - r.top) * (H / r.height);
   const hit = hitTest(x, y);
@@ -1092,7 +1117,7 @@ document.addEventListener('keydown', e => {
    ======================================================================= */
 const RELAY_HTTP = 'https://ntfy.sh/';
 const RELAY_WS   = 'wss://ntfy.sh/';
-const HELLO_MS = 2500, HEARTBEAT_MS = 22000, PEER_TIMEOUT_MS = 75000,
+const HELLO_MS = 2500, HEARTBEAT_MS = 9000, PEER_TIMEOUT_MS = 75000,
       GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 40000;
 
 const net = {
@@ -1108,7 +1133,8 @@ const net = {
   seq: 0,            // host: increments on every state published
   lastSeq: 0,        // guest: highest state applied, so replays can't rewind us
   lastRx: 0,         // any inbound frame, used to spot a zombie socket
-  actId: 0, pending: null, lastActId: 0,
+  actId: 0, outbox: [], inflight: null,     // guest: moves awaiting acknowledgement
+  ackId: 0, guestFrom: null,               // host: last act applied, and whose session it was
   run: null, peerRun: null,   // identifies a hosting session across restarts
   peerGid: null,              // last game id seen from the host
   everOpened: false,
@@ -1250,18 +1276,31 @@ function handleRelay(m) {
   if (m.t === 'bye') { peerGone(); return; }
   if (m.t === 'hostup') {                     // the host (re)appeared — re-handshake at once
     if (net.role === 'guest') {
-      net.peerRun = null; net.lastSeq = 0; net.paired = false; net.pending = null;
+      net.peerRun = null; net.lastSeq = 0; net.paired = false;
+      if (net.inflight) { net.outbox.unshift(net.inflight.msg); net.inflight = null; }
       relaySend({ t: 'hello' });
       startHello();
       netStatus('Host is back — resyncing…', 'wait');
     }
     return;
   }
-  if (m.t === 'ping') { if (!net.paired && net.role === 'guest') relaySend({ t: 'hello' }); return; }
+  if (m.t === 'ping') {
+    if (net.role !== 'guest') return;
+    if (!net.paired) { relaySend({ t: 'hello' }); return; }
+    // the host tells us where it is; if we're behind, ask for the position.
+    // Without this a single dropped state leaves this side stuck forever.
+    if (m.run && m.run !== net.peerRun) { relaySend({ t: 'hello' }); return; }
+    if (typeof m.q === 'number' && m.q > net.lastSeq) {
+      netStatus('Catching up…', 'wait');
+      relaySend({ t: 'resync' });
+    }
+    return;
+  }
 
   if (net.role === 'host') {
     if (m.t === 'hello') {                              // new arrival, or a rejoin after a refresh
       const wasPaired = net.paired;
+      if (m.from !== net.guestFrom) { net.guestFrom = m.from; net.ackId = 0; }
       stopWatch(); net.paired = true;
       relaySend({ t: 'welcome', seat: net.guestSeat });
       net.lastSent = '';
@@ -1273,12 +1312,12 @@ function handleRelay(m) {
     }
     if (m.t === 'resync') { net.lastSent = ''; broadcast(true); return; }
     if (m.t === 'act') {
-      // a retry of something we already applied, or an act based on a position
-      // we've since moved past: don't replay it, just re-send the truth
-      if (m.id && m.id === net.lastActId) { net.lastSent = ''; broadcast(true); return; }
-      if (typeof m.base === 'number' && m.base < net.seq) { net.lastSent = ''; broadcast(true); return; }
-      net.lastActId = m.id || 0;
+      if (m.from !== net.guestFrom) { net.guestFrom = m.from; net.ackId = 0; }  // new guest session
+      const id = m.id || 0;
+      if (id && id <= net.ackId) { net.lastSent = ''; broadcast(true); return; } // already applied
+      net.ackId = id;
       applyAct(m.a, net.guestSeat);
+      net.lastSent = '';
       broadcast(true);
       return;
     }
@@ -1310,7 +1349,7 @@ function handleRelay(m) {
       if (net.peerGid && m.gid !== net.peerGid) toast('Your opponent started a new game.', true);
       net.peerGid = m.gid;
     }
-    net.pending = null;                                            // our move landed
+    onAck(m.ack);
     const wasPaired = net.paired;
     net.paired = true;
     applyState(m);
@@ -1344,7 +1383,10 @@ function stopHello() { clearInterval(net.helloTimer); net.helloTimer = null; }
 
 function startHeartbeat() {
   clearInterval(net.hbTimer);
-  net.hbTimer = setInterval(() => { if (net.role) relaySend({ t: 'ping' }); }, HEARTBEAT_MS);
+  net.hbTimer = setInterval(() => {
+    if (!net.role) return;
+    relaySend(net.role === 'host' ? { t: 'ping', q: net.seq, run: net.run } : { t: 'ping' });
+  }, HEARTBEAT_MS);
 }
 function startWatch() {
   stopWatch();
@@ -1360,17 +1402,14 @@ function watchTick() {
   const dead = !net.ws || net.ws.readyState > 1 || (now - net.lastRx > SOCKET_SILENCE_MS);
   if (dead) { netStatus('Connection went quiet — reconnecting…', 'wait'); relayOpen(); return; }
 
-  // A move that never got answered gets sent again.
-  if (net.pending && now - net.pending.at > 1600) {
-    if (net.pending.tries < 5) {
-      net.pending.tries++;
-      net.pending.at = now;
-      relaySend(net.pending.msg);
-      if (net.pending.tries >= 2) netStatus('Move not acknowledged — retrying…', 'wait');
-    } else {
-      net.pending = null;
-      netStatus('Move did not get through. Tap the status pill to resync.', 'err');
-    }
+  // A move that never got answered gets sent again, indefinitely — dropping it
+  // is what used to leave the two boards permanently out of step.
+  if (net.inflight && now - net.inflight.at > 1200) {
+    net.inflight.tries++;
+    net.inflight.at = now;
+    relaySend(net.inflight.msg);
+    if (net.inflight.tries === 3) netStatus('Move not acknowledged — still retrying…', 'wait');
+    if (net.inflight.tries % 6 === 0) relaySend({ t: 'resync' });
   }
 
   if (net.paired && now - net.lastSeen > PEER_TIMEOUT_MS) peerGone();
@@ -1436,7 +1475,7 @@ function leaveNet(quiet) {
   net.role = null; net.code = null; net.topic = null; net.guestSeat = null;
   net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
   net.seq = 0; net.lastSeq = 0; net.run = null; net.peerRun = null; net.peerGid = null;
-  net.pending = null; net.lastActId = 0; net.everOpened = false;
+  net.outbox = []; net.inflight = null; net.actId = 0; net.ackId = 0; net.guestFrom = null; net.everOpened = false;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1472,7 +1511,7 @@ function statePayload() {
     op: [S.open.w, S.open.b],
     m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
     h: S.hist.slice(-8), hn: S.hist.length,
-    gid: S.gid, q: net.seq, run: net.run,
+    gid: S.gid, q: net.seq, run: net.run, ack: net.ackId,
     msg: $('msg').textContent,
     rl: $('roll').textContent,
     cr: rollAvailable, cu: undoAvailable,
@@ -1490,24 +1529,34 @@ function broadcast(force) {
 }
 
 function applyState(p) {
+  const heldBefore = (myColor !== null && p.tu === myColor && S.turn === p.tu) ? S.sel : null;
   S.pts = p.p.map(v => ({ c: v > 0 ? 1 : (v < 0 ? -1 : 0), n: Math.abs(v) }));
   S.bar = { 1: p.b[0], '-1': p.b[1] };
   S.off = { 1: p.o[0], '-1': p.o[1] };
   S.turn = p.tu; S.phase = p.ph;
   S.dice = p.d.map(v => ({ v: Math.abs(v), used: v < 0 }));
   S.open = { w: p.op[0], b: p.op[1] };
-  S.sel = null; S.history = [];
+  S.history = [];
+  // keep the checker you had picked up, if it's still yours to move
+  S.sel = null;
+  if (heldBefore !== null && heldBefore !== undefined) {
+    const c = S.turn;
+    const ok = heldBefore === 'bar' ? S.bar[c] > 0
+             : (S.pts[heldBefore] && S.pts[heldBefore].c === c && S.pts[heldBefore].n > 0);
+    if (ok) S.sel = heldBefore;
+  }
   if (p.gid) S.gid = p.gid;
 
-  // append whatever turns we haven't seen; after a reconnect just take the tail
+  // The tail the host sends is authoritative: overwrite the turns it covers
+  // rather than only appending, otherwise a turn logged before its moves were
+  // played stays permanently empty on this side.
   const tail = p.h || [], total = p.hn || 0, have = S.hist.length;
-  if (total > have) {
+  const movesBefore = S.hist.reduce((n, t) => n + t.m.length, 0);
+  if (tail.length || total === 0) {
     const tailStart = total - tail.length;
-    if (tailStart <= have) S.hist = S.hist.concat(tail.slice(have - tailStart));
-    else S.hist = tail.slice();
-  } else if (total < have) S.hist = tail.slice();
-
-  const grew = total > have;
+    S.hist = tailStart <= S.hist.length ? S.hist.slice(0, tailStart).concat(tail) : tail.slice();
+  }
+  const grew = S.hist.reduce((n, t) => n + t.m.length, 0) > movesBefore || total > have;
   match = { W: p.m.W, B: p.m.B, game: p.m.g, lastWinner: p.m.lw, log: p.m.l || [] };
   saveMatch();
   if (grew) {
