@@ -1124,7 +1124,7 @@ const net = {
   role: null,          // null | 'host' | 'guest'
   code: null, topic: null,
   id: null,            // random per tab, so we ignore our own messages
-  ws: null, wsOpen: false,
+  ws: null, client: null, mode: null, brokerIdx: 0, queued: [], opening: false, wsOpen: false,
   guestSeat: null,
   paired: false,
   lastSeen: 0,
@@ -1174,6 +1174,7 @@ function netStatus(text, cls) {
   const pill = $('netpill');
   if (net.role && net.paired && myColor !== null) {
     pill.textContent = 'ONLINE · ' + name(myColor).toUpperCase();
+    pill.title = 'Connected over ' + linkLabel() + ' — tap to resync';
     pill.className = 'on';
   } else if (net.role) {
     pill.textContent = net.code ? 'CODE ' + net.code : 'CONNECTING';
@@ -1207,70 +1208,184 @@ async function showQR(url) {
   } catch (e) { box.hidden = true; }
 }
 
-/* ---------- relay plumbing ---------- */
-function relaySend(obj, retries) {
+/* ---------- transport ----------
+   MQTT first: brokers keep a *retained* copy of the last position, so anyone
+   who subscribes — a late joiner, a phone waking up, a reloaded tab — is handed
+   the current board immediately. That removes the "missed one message and now
+   I'm stuck forever" failure that plagued a fire-and-forget relay.
+   ntfy stays as a fallback in case every broker is unreachable. */
+const MQTT_SRCS = [
+  'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js',
+  'https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js',
+];
+const BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://test.mosquitto.org:8081/mqtt',
+];
+const mqttTopic = code => 'bkgmnjd/' + String(code).toLowerCase();
+
+function linkAlive() {
+  if (net.mode === 'mqtt') return !!(net.client && net.client.connected);
+  return !!(net.ws && net.ws.readyState === 1);
+}
+function linkLabel() {
+  if (net.mode === 'mqtt') return 'mqtt · ' + (BROKERS[net.brokerIdx] || '').replace('wss://', '').split(':')[0];
+  if (net.mode === 'ntfy') return 'ntfy.sh';
+  return '—';
+}
+
+function transportClose() {
+  try { if (net.client) { net.client.removeAllListeners && net.client.removeAllListeners(); net.client.end(true); } } catch (e) {}
+  try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
+  net.client = null; net.ws = null;
+}
+
+/* every message goes out the currently connected link; state is retained */
+function relaySend(obj, retain, retries) {
   if (!net.topic) return;
   obj.from = net.id;
   const body = JSON.stringify(obj);
+
+  if (net.mode === 'mqtt') {
+    if (!net.client || !net.client.connected) { net.queued.push({ body, retain }); return; }
+    try { net.client.publish(mqttTopic(net.code), body, { qos: 1, retain: !!retain }); }
+    catch (e) { net.queued.push({ body, retain }); }
+    return;
+  }
+
   fetch(RELAY_HTTP + net.topic, { method: 'POST', body })
     .then(r => {
       if (r.ok) return;
-      if (r.status === 429) {                       // backed off, not lost
+      if (r.status === 429) {
         netStatus('Relay is throttling us — retrying…', 'wait');
-        if ((retries || 0) < 4) setTimeout(() => relaySend(obj, (retries || 0) + 1), 2500 + Math.random() * 1500);
-      } else if ((retries || 0) < 2) {
-        setTimeout(() => relaySend(obj, (retries || 0) + 1), 1200);
-      }
+        if ((retries || 0) < 4) setTimeout(() => relaySend(obj, retain, (retries || 0) + 1), 2500 + Math.random() * 1500);
+      } else if ((retries || 0) < 2) setTimeout(() => relaySend(obj, retain, (retries || 0) + 1), 1200);
     })
-    .catch(() => { if ((retries || 0) < 3) setTimeout(() => relaySend(obj, (retries || 0) + 1), 1500); });
+    .catch(() => { if ((retries || 0) < 3) setTimeout(() => relaySend(obj, retain, (retries || 0) + 1), 1500); });
+}
+function flushQueued() {
+  if (net.mode !== 'mqtt' || !net.client || !net.client.connected) return;
+  const q = net.queued.splice(0);
+  for (const item of q) {
+    try { net.client.publish(mqttTopic(net.code), item.body, { qos: 1, retain: !!item.retain }); } catch (e) {}
+  }
 }
 
-function relayOpen() {
-  clearTimeout(net.retryTimer);
-  try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
-  // on a reconnect, ask the relay to replay the last couple of minutes so a
-  // move published while we were away isn't lost for good
+function onLinkUp() {
+  net.wsOpen = true;
+  net.lastRx = Date.now();
+  const rejoining = net.everOpened;
+  net.everOpened = true;
+  flushQueued();
+  if (net.role === 'guest') {
+    startHello();
+    netStatus((rejoining ? 'Reconnected' : 'Connected') + ' via ' + linkLabel() + ' — finding the game…', 'wait');
+    if (net.paired) relaySend({ t: 'resync' });
+  } else {
+    netStatus(net.paired ? 'Reconnected via ' + linkLabel() + '.' : 'Waiting for your opponent — code ' + net.code + '.', net.paired ? 'on' : 'wait');
+    net.lastSent = '';
+    if (net.paired) broadcast(true);
+    else relaySend({ t: 'hostup', run: net.run });
+  }
+  startHeartbeat();
+  startWatch();
+  gate();
+}
+
+function onLinkMessage(raw) {
+  net.lastRx = Date.now();
+  let m; try { m = JSON.parse(raw); } catch (e) { return; }
+  if (!m || m.from === net.id) return;
+  net.lastSeen = Date.now();
+  handleRelay(m);
+}
+
+/* ---------- MQTT ---------- */
+/* All brokers are tried at once and the first to answer wins. Trying them in
+   turn meant a slow start whenever the first was unreachable, which looks
+   exactly like "online is broken". */
+async function openMqtt() {
+  const ok = await loadScript(MQTT_SRCS, () => typeof window.mqtt === 'object' && !!window.mqtt.connect);
+  if (!ok) return false;
+
+  const attempts = [];
+  const winner = await new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (!settled) { settled = true; resolve(v); } };
+    const overall = setTimeout(() => done(null), 8500);
+
+    BROKERS.forEach((url, i) => {
+      let c;
+      try {
+        c = window.mqtt.connect(url, {
+          clientId: 'bg_' + net.id + '_' + Math.random().toString(16).slice(2, 8),
+          clean: true, keepalive: 30, connectTimeout: 6000, reconnectPeriod: 4000,
+        });
+      } catch (e) { return; }
+      attempts.push(c);
+      c.on('connect', () => { clearTimeout(overall); done({ client: c, i }); });
+      c.on('error', () => {});
+    });
+
+    if (!attempts.length) { clearTimeout(overall); done(null); }
+  });
+
+  // shut down whichever links lost the race
+  attempts.forEach(c => {
+    if (winner && c === winner.client) return;
+    try { c.removeAllListeners && c.removeAllListeners(); c.end(true); } catch (e) {}
+  });
+  if (!winner) return false;
+
+  const client = winner.client;
+  net.client = client; net.mode = 'mqtt'; net.brokerIdx = winner.i;
+  client.subscribe(mqttTopic(net.code), { qos: 1 }, () => {});
+  client.on('message', (t, payload) => onLinkMessage(payload.toString()));
+  client.on('close', () => { net.wsOpen = false; });
+  client.on('reconnect', () => netStatus('Reconnecting…', 'wait'));
+  onLinkUp();
+  return true;
+}
+
+/* ---------- ntfy fallback ---------- */
+function openNtfy() {
+  net.mode = 'ntfy';
   const since = net.everOpened ? '?since=120s' : '';
   const ws = new WebSocket(RELAY_WS + net.topic + '/ws' + since);
   net.ws = ws;
   net.lastRx = Date.now();
-
-  ws.onopen = () => {
-    net.wsOpen = true;
-    net.lastRx = Date.now();
-    const rejoining = net.everOpened;
-    net.everOpened = true;
-    if (net.role === 'guest') {
-      startHello();
-      netStatus(rejoining ? 'Reconnected — resyncing…' : 'Looking for the host…', 'wait');
-      if (net.paired) relaySend({ t: 'resync' });
-    } else {
-      netStatus(net.paired ? 'Reconnected.' : 'Waiting for your opponent to join…', net.paired ? 'on' : 'wait');
-      if (net.paired) { net.lastSent = ''; broadcast(true); }
-      else relaySend({ t: 'hostup', run: net.run });
-    }
-    startHeartbeat();
-    startWatch();
-    gate();
-  };
-
+  ws.onopen = () => onLinkUp();
   ws.onmessage = ev => {
-    net.lastRx = Date.now();                           // any frame proves the socket lives
+    net.lastRx = Date.now();
     let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
-    if (d.event !== 'message') return;                 // open / keepalive frames
-    let m; try { m = JSON.parse(d.message); } catch (e) { return; }
-    if (!m || m.from === net.id) return;               // our own echo
-    net.lastSeen = Date.now();
-    handleRelay(m);
+    if (d.event !== 'message') return;
+    onLinkMessage(d.message);
   };
-
   ws.onclose = () => {
     net.wsOpen = false;
     if (net.closed) return;
-    netStatus('Relay dropped — reconnecting…', 'wait');
+    netStatus('Connection dropped — reconnecting…', 'wait');
     net.retryTimer = setTimeout(relayOpen, 2000);
   };
   ws.onerror = () => {};
+}
+
+async function relayOpen() {
+  clearTimeout(net.retryTimer);
+  if (net.opening) return;
+  net.opening = true;
+  transportClose();
+  try {
+    const viaMqtt = await openMqtt();
+    if (!viaMqtt) {
+      netStatus('Brokers unreachable — falling back to ntfy…', 'wait');
+      openNtfy();
+    }
+  } catch (e) {
+    openNtfy();
+  } finally { net.opening = false; }
 }
 
 function handleRelay(m) {
@@ -1337,7 +1452,12 @@ function handleRelay(m) {
     return;
   }
   if (m.t === 'state') {
-    if (myColor === null) { relaySend({ t: 'hello' }); return; }   // seat unknown — ask again
+    if (myColor === null) {
+      // the retained position tells us which seat is free, so we can join
+      // straight off the board without waiting for a handshake
+      if (m.hs === 1 || m.hs === -1) { myColor = -m.hs; stopHello(); }
+      else { relaySend({ t: 'hello' }); return; }
+    }
     if (m.run && m.run !== net.peerRun) {                          // host restarted; counters reset
       net.peerRun = m.run;
       net.lastSeq = 0;
@@ -1401,7 +1521,7 @@ function watchTick() {
 
   // Mobile browsers kill sockets on backgrounding without always firing onclose,
   // so treat a long silence as death and rebuild the connection.
-  const dead = !net.ws || net.ws.readyState > 1 || (now - net.lastRx > SOCKET_SILENCE_MS);
+  const dead = !linkAlive() || (now - net.lastRx > SOCKET_SILENCE_MS);
   if (dead) { netStatus('Connection went quiet — reconnecting…', 'wait'); relayOpen(); return; }
 
   // A move that never got answered gets sent again, indefinitely — dropping it
@@ -1421,7 +1541,7 @@ function watchTick() {
 /* full state, on demand — the escape hatch when anything looks out of step */
 function forceResync() {
   if (!net.role) return;
-  if (!net.ws || net.ws.readyState > 1) { relayOpen(); return; }
+  if (!linkAlive()) { relayOpen(); return; }
   if (net.role === 'host') { net.lastSent = ''; broadcast(true); netStatus('Resent the position.', 'on'); }
   else { relaySend({ t: 'resync' }); netStatus('Asked the host for the position…', 'wait'); }
 }
@@ -1468,16 +1588,20 @@ function joinGame(code) {
 
 function leaveNet(quiet) {
   if (net.role && net.paired) relaySend({ t: 'bye' });
+  if (net.role === 'host' && net.mode === 'mqtt' && net.client && net.client.connected) {
+    try { net.client.publish(mqttTopic(net.code), '', { qos: 1, retain: true }); } catch (e) {}  // clear the retained board
+  }
   net.closed = true;
   stopHello(); stopWatch();
   clearInterval(net.hbTimer); net.hbTimer = null;
   clearTimeout(net.retryTimer); net.retryTimer = null;
-  try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
-  net.ws = null; net.wsOpen = false;
+  transportClose();
+  net.wsOpen = false;
   net.role = null; net.code = null; net.topic = null; net.guestSeat = null;
   net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
   net.seq = 0; net.lastSeq = 0; net.run = null; net.peerRun = null; net.peerGid = null;
   net.outbox = []; net.inflight = null; net.actId = 0; net.ackId = 0; net.guestFrom = null; net.everOpened = false;
+  net.mode = null; net.brokerIdx = 0; net.queued = []; net.opening = false;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1490,7 +1614,7 @@ function leaveNet(quiet) {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !net.role || net.closed) return;
-  if (!net.ws || net.ws.readyState > 1 || Date.now() - net.lastRx > 15000) relayOpen();
+  if (!linkAlive() || Date.now() - net.lastRx > 15000) relayOpen();
   else forceResync();
 });
 window.addEventListener('focus', () => { if (net.role && !net.closed) watchTick(); });
@@ -1513,7 +1637,7 @@ function statePayload() {
     op: [S.open.w, S.open.b],
     m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
     h: S.hist.slice(-8), hn: S.hist.length,
-    gid: S.gid, q: net.seq, run: net.run, ack: net.ackId,
+    gid: S.gid, q: net.seq, run: net.run, ack: net.ackId, hs: myColor, code: net.code,
     msg: $('msg').textContent,
     rl: $('roll').textContent,
     cr: rollAvailable, cu: undoAvailable,
@@ -1521,13 +1645,16 @@ function statePayload() {
   };
 }
 function broadcast(force) {
-  if (net.role !== 'host' || !net.topic || !net.paired) return;
+  if (net.role !== 'host' || !net.topic) return;
+  // on MQTT the position is a single retained message, so publishing before an
+  // opponent arrives costs nothing and means they join already up to date
+  if (!net.paired && net.mode !== 'mqtt') return;
   net.seq++;
   const p = statePayload();
   const key = JSON.stringify(Object.assign({}, p, { q: 0 }));   // compare content, not the counter
   if (!force && key === net.lastSent) { net.seq--; return; }
   net.lastSent = key;
-  relaySend(p);
+  relaySend(p, true);   // retained: the broker hands this to anyone who joins
 }
 
 function applyState(p) {
