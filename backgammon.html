@@ -550,11 +550,12 @@ function saveMatch() {
 }
 /* the live position, so a refresh (or a host reloading mid-game) doesn't lose it */
 const STATE_KEY = 'backgammon.state.v1';
+let lastSaveAt = 0;
 function saveState() {
   try {
     if (!S) return;
     const lean = { pts: S.pts, bar: S.bar, off: S.off, turn: S.turn, dice: S.dice,
-                   phase: S.phase, open: S.open, hist: S.hist };
+                   phase: S.phase, open: S.open, hist: S.hist, gid: S.gid };
     localStorage.setItem(STATE_KEY, JSON.stringify({
       t: Date.now(), s: lean,
       ui: { msg: $('msg').textContent, rl: $('roll').textContent, cr: rollAvailable, cu: undoAvailable },
@@ -595,6 +596,7 @@ function newGame() {
     off: { 1: 0, '-1': 0 },
     turn: 1,
     dice: [], sel: null, history: [], hist: [],
+    gid: Math.random().toString(36).slice(2, 8),
     phase: 'opening',
     open: { w: null, b: null },
   };
@@ -927,8 +929,16 @@ function roll() {
 
 /* ---------- actions (single funnel so the network can replay them) ---------- */
 function act(a) {
-  if (net.role === 'guest') { relaySend({ t: 'act', a }); return; }
+  if (net.role === 'guest') { sendAct(a); return; }
   applyAct(a, myColor);
+}
+
+/* A guest's action has to arrive or the game silently stalls, so we keep the
+   last one pending until a fresh state proves the host acted on it. */
+function sendAct(a) {
+  net.actId++;
+  net.pending = { msg: { t: 'act', a, id: net.actId, base: net.lastSeq }, tries: 0, at: Date.now() };
+  relaySend(net.pending.msg);
 }
 function applyAct(a, who) {
   switch (a.type) {
@@ -1028,7 +1038,7 @@ function localClick(hit) {
 
   const from = S.sel;
   S.sel = null;
-  if (net.role === 'guest') { draw(); relaySend({ t: 'act', a: { type: 'move', from, to: target } }); return; }
+  if (net.role === 'guest') { draw(); sendAct({ type: 'move', from, to: target }); return; }
   applySequence(paths.get(target));
   afterMove();
 }
@@ -1082,7 +1092,8 @@ document.addEventListener('keydown', e => {
    ======================================================================= */
 const RELAY_HTTP = 'https://ntfy.sh/';
 const RELAY_WS   = 'wss://ntfy.sh/';
-const HELLO_MS = 2500, HEARTBEAT_MS = 12000, PEER_TIMEOUT_MS = 40000, GIVE_UP_MS = 25000;
+const HELLO_MS = 2500, HEARTBEAT_MS = 22000, PEER_TIMEOUT_MS = 75000,
+      GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 40000;
 
 const net = {
   role: null,          // null | 'host' | 'guest'
@@ -1094,6 +1105,13 @@ const net = {
   lastSeen: 0,
   lastSent: '',
   fx: null, fxSeq: 0, lastFxSeen: 0,
+  seq: 0,            // host: increments on every state published
+  lastSeq: 0,        // guest: highest state applied, so replays can't rewind us
+  lastRx: 0,         // any inbound frame, used to spot a zombie socket
+  actId: 0, pending: null, lastActId: 0,
+  run: null, peerRun: null,   // identifies a hosting session across restarts
+  peerGid: null,              // last game id seen from the host
+  everOpened: false,
   closed: false,
   helloTimer: null, hbTimer: null, watchTimer: null, retryTimer: null, joinedAt: 0,
 };
@@ -1163,31 +1181,56 @@ async function showQR(url) {
 }
 
 /* ---------- relay plumbing ---------- */
-function relaySend(obj) {
+function relaySend(obj, retries) {
   if (!net.topic) return;
   obj.from = net.id;
-  fetch(RELAY_HTTP + net.topic, { method: 'POST', body: JSON.stringify(obj) })
-    .then(r => { if (!r.ok && r.status === 429) netStatus('Relay is rate limiting us — slow down a moment.', 'err'); })
-    .catch(() => {});
+  const body = JSON.stringify(obj);
+  fetch(RELAY_HTTP + net.topic, { method: 'POST', body })
+    .then(r => {
+      if (r.ok) return;
+      if (r.status === 429) {                       // backed off, not lost
+        netStatus('Relay is throttling us — retrying…', 'wait');
+        if ((retries || 0) < 4) setTimeout(() => relaySend(obj, (retries || 0) + 1), 2500 + Math.random() * 1500);
+      } else if ((retries || 0) < 2) {
+        setTimeout(() => relaySend(obj, (retries || 0) + 1), 1200);
+      }
+    })
+    .catch(() => { if ((retries || 0) < 3) setTimeout(() => relaySend(obj, (retries || 0) + 1), 1500); });
 }
 
 function relayOpen() {
   clearTimeout(net.retryTimer);
   try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
-  const ws = new WebSocket(RELAY_WS + net.topic + '/ws');
+  // on a reconnect, ask the relay to replay the last couple of minutes so a
+  // move published while we were away isn't lost for good
+  const since = net.everOpened ? '?since=120s' : '';
+  const ws = new WebSocket(RELAY_WS + net.topic + '/ws' + since);
   net.ws = ws;
+  net.lastRx = Date.now();
 
   ws.onopen = () => {
     net.wsOpen = true;
-    if (net.role === 'guest') { startHello(); netStatus('Looking for the host…', 'wait'); }
-    else netStatus('Waiting for your opponent to join…', 'wait');
+    net.lastRx = Date.now();
+    const rejoining = net.everOpened;
+    net.everOpened = true;
+    if (net.role === 'guest') {
+      startHello();
+      netStatus(rejoining ? 'Reconnected — resyncing…' : 'Looking for the host…', 'wait');
+      if (net.paired) relaySend({ t: 'resync' });
+    } else {
+      netStatus(net.paired ? 'Reconnected.' : 'Waiting for your opponent to join…', net.paired ? 'on' : 'wait');
+      if (net.paired) { net.lastSent = ''; broadcast(true); }
+      else relaySend({ t: 'hostup', run: net.run });
+    }
     startHeartbeat();
+    startWatch();
     gate();
   };
 
   ws.onmessage = ev => {
+    net.lastRx = Date.now();                           // any frame proves the socket lives
     let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
-    if (d.event !== 'message') return;                 // skip open/keepalive frames
+    if (d.event !== 'message') return;                 // open / keepalive frames
     let m; try { m = JSON.parse(d.message); } catch (e) { return; }
     if (!m || m.from === net.id) return;               // our own echo
     net.lastSeen = Date.now();
@@ -1205,6 +1248,15 @@ function relayOpen() {
 
 function handleRelay(m) {
   if (m.t === 'bye') { peerGone(); return; }
+  if (m.t === 'hostup') {                     // the host (re)appeared — re-handshake at once
+    if (net.role === 'guest') {
+      net.peerRun = null; net.lastSeq = 0; net.paired = false; net.pending = null;
+      relaySend({ t: 'hello' });
+      startHello();
+      netStatus('Host is back — resyncing…', 'wait');
+    }
+    return;
+  }
   if (m.t === 'ping') { if (!net.paired && net.role === 'guest') relaySend({ t: 'hello' }); return; }
 
   if (net.role === 'host') {
@@ -1219,7 +1271,17 @@ function handleRelay(m) {
       if (!wasPaired) announcePaired();
       return;
     }
-    if (m.t === 'act') { applyAct(m.a, net.guestSeat); broadcast(); return; }
+    if (m.t === 'resync') { net.lastSent = ''; broadcast(true); return; }
+    if (m.t === 'act') {
+      // a retry of something we already applied, or an act based on a position
+      // we've since moved past: don't replay it, just re-send the truth
+      if (m.id && m.id === net.lastActId) { net.lastSent = ''; broadcast(true); return; }
+      if (typeof m.base === 'number' && m.base < net.seq) { net.lastSent = ''; broadcast(true); return; }
+      net.lastActId = m.id || 0;
+      applyAct(m.a, net.guestSeat);
+      broadcast(true);
+      return;
+    }
     return;
   }
 
@@ -1236,6 +1298,19 @@ function handleRelay(m) {
   }
   if (m.t === 'state') {
     if (myColor === null) { relaySend({ t: 'hello' }); return; }   // seat unknown — ask again
+    if (m.run && m.run !== net.peerRun) {                          // host restarted; counters reset
+      net.peerRun = m.run;
+      net.lastSeq = 0;
+    }
+    if (typeof m.q === 'number') {
+      if (m.q < net.lastSeq) return;                               // a replayed old state; ignore
+      net.lastSeq = m.q;
+    }
+    if (m.gid) {
+      if (net.peerGid && m.gid !== net.peerGid) toast('Your opponent started a new game.', true);
+      net.peerGid = m.gid;
+    }
+    net.pending = null;                                            // our move landed
     const wasPaired = net.paired;
     net.paired = true;
     applyState(m);
@@ -1273,10 +1348,41 @@ function startHeartbeat() {
 }
 function startWatch() {
   stopWatch();
-  net.lastSeen = Date.now();
-  net.watchTimer = setInterval(() => {
-    if (net.paired && Date.now() - net.lastSeen > PEER_TIMEOUT_MS) peerGone();
-  }, 5000);
+  net.lastSeen = net.lastSeen || Date.now();
+  net.watchTimer = setInterval(watchTick, 3000);
+}
+function watchTick() {
+  if (!net.role || net.closed) return;
+  const now = Date.now();
+
+  // Mobile browsers kill sockets on backgrounding without always firing onclose,
+  // so treat a long silence as death and rebuild the connection.
+  const dead = !net.ws || net.ws.readyState > 1 || (now - net.lastRx > SOCKET_SILENCE_MS);
+  if (dead) { netStatus('Connection went quiet — reconnecting…', 'wait'); relayOpen(); return; }
+
+  // A move that never got answered gets sent again.
+  if (net.pending && now - net.pending.at > 1600) {
+    if (net.pending.tries < 5) {
+      net.pending.tries++;
+      net.pending.at = now;
+      relaySend(net.pending.msg);
+      if (net.pending.tries >= 2) netStatus('Move not acknowledged — retrying…', 'wait');
+    } else {
+      net.pending = null;
+      netStatus('Move did not get through. Tap the status pill to resync.', 'err');
+    }
+  }
+
+  if (net.paired && now - net.lastSeen > PEER_TIMEOUT_MS) peerGone();
+  else if (net.role === 'guest' && net.paired && now - net.lastSeen > 20000) relaySend({ t: 'resync' });
+}
+
+/* full state, on demand — the escape hatch when anything looks out of step */
+function forceResync() {
+  if (!net.role) return;
+  if (!net.ws || net.ws.readyState > 1) { relayOpen(); return; }
+  if (net.role === 'host') { net.lastSent = ''; broadcast(true); netStatus('Resent the position.', 'on'); }
+  else { relaySend({ t: 'resync' }); netStatus('Asked the host for the position…', 'wait'); }
 }
 function stopWatch() { clearInterval(net.watchTimer); net.watchTimer = null; }
 
@@ -1287,6 +1393,8 @@ function hostGame(seat, fixedCode) {
   net.role = 'host';
   net.guestSeat = -seat;
   net.code = fixedCode || roomCode();
+  net.run = randomId();
+  net.seq = 0; net.lastSent = '';
   net.topic = topicFor(net.code);
   net.id = randomId();
   net.closed = false;
@@ -1327,6 +1435,8 @@ function leaveNet(quiet) {
   net.ws = null; net.wsOpen = false;
   net.role = null; net.code = null; net.topic = null; net.guestSeat = null;
   net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
+  net.seq = 0; net.lastSeq = 0; net.run = null; net.peerRun = null; net.peerGid = null;
+  net.pending = null; net.lastActId = 0; net.everOpened = false;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1337,6 +1447,13 @@ function leaveNet(quiet) {
     gate(); draw();
   }
 }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !net.role || net.closed) return;
+  if (!net.ws || net.ws.readyState > 1 || Date.now() - net.lastRx > 15000) relayOpen();
+  else forceResync();
+});
+window.addEventListener('focus', () => { if (net.role && !net.closed) watchTick(); });
+
 window.addEventListener('beforeunload', () => {
   if (net.role && net.topic) {
     try { navigator.sendBeacon(RELAY_HTTP + net.topic, JSON.stringify({ t: 'bye', from: net.id })); } catch (e) {}
@@ -1355,6 +1472,7 @@ function statePayload() {
     op: [S.open.w, S.open.b],
     m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
     h: S.hist.slice(-8), hn: S.hist.length,
+    gid: S.gid, q: net.seq, run: net.run,
     msg: $('msg').textContent,
     rl: $('roll').textContent,
     cr: rollAvailable, cu: undoAvailable,
@@ -1363,9 +1481,10 @@ function statePayload() {
 }
 function broadcast(force) {
   if (net.role !== 'host' || !net.topic || !net.paired) return;
+  net.seq++;
   const p = statePayload();
-  const key = JSON.stringify(p);
-  if (!force && key === net.lastSent) return;
+  const key = JSON.stringify(Object.assign({}, p, { q: 0 }));   // compare content, not the counter
+  if (!force && key === net.lastSent) { net.seq--; return; }
   net.lastSent = key;
   relaySend(p);
 }
@@ -1378,6 +1497,7 @@ function applyState(p) {
   S.dice = p.d.map(v => ({ v: Math.abs(v), used: v < 0 }));
   S.open = { w: p.op[0], b: p.op[1] };
   S.sel = null; S.history = [];
+  if (p.gid) S.gid = p.gid;
 
   // append whatever turns we haven't seen; after a reconnect just take the tail
   const tail = p.h || [], total = p.hn || 0, have = S.hist.length;
@@ -2053,6 +2173,7 @@ function draw() {
   renderLastMove();
   gate();
   broadcast();
+  if (performance.now() - lastSaveAt > 1000) { lastSaveAt = performance.now(); saveState(); }
 }
 
 /* ---------- fit to whatever screen we're on ---------- */
@@ -2276,6 +2397,10 @@ function buildSwatches() {
     paintSwatch(b.querySelector('canvas'), boardTheme, key);
   }
 }
+
+$('netpill').onclick = forceResync;
+$('netpill').style.cursor = 'pointer';
+$('netpill').title = 'Tap to resync with your opponent';
 
 $('themeBtn').onclick = () => { buildSwatches(); $('themeModal').hidden = false; };
 $('themeClose').onclick = () => { $('themeModal').hidden = true; };
