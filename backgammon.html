@@ -1118,13 +1118,14 @@ document.addEventListener('keydown', e => {
 const RELAY_HTTP = 'https://ntfy.sh/';
 const RELAY_WS   = 'wss://ntfy.sh/';
 const HELLO_MS = 2500, HEARTBEAT_MS = 9000, PEER_TIMEOUT_MS = 75000,
-      GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 100000;   // relay keepalive is ~45s; never undercut it
+      GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 100000, HOST_QUIET_MS = 32000;   // relay keepalive is ~45s; never undercut it
 
 const net = {
   role: null,          // null | 'host' | 'guest'
   code: null, topic: null,
   id: null,            // random per tab, so we ignore our own messages
-  ws: null, client: null, mode: null, brokerIdx: 0, queued: [], opening: false, wsOpen: false,
+  ws: null, clients: [], mode: null, queued: [], opening: false, wsOpen: false,
+  midSeq: 0, seenMids: [],   // de-duplicates the same message arriving via several brokers
   guestSeat: null,
   paired: false,
   lastSeen: 0,
@@ -1226,32 +1227,39 @@ const BROKERS = [
 ];
 const mqttTopic = code => 'bkgmnjd/' + String(code).toLowerCase();
 
+const liveClients = () => net.clients.filter(c => c && c.connected);
 function linkAlive() {
-  if (net.mode === 'mqtt') return !!(net.client && net.client.connected);
+  if (net.mode === 'mqtt') return liveClients().length > 0;
   return !!(net.ws && net.ws.readyState === 1);
 }
 function linkLabel() {
-  if (net.mode === 'mqtt') return 'mqtt · ' + (BROKERS[net.brokerIdx] || '').replace('wss://', '').split(':')[0];
+  if (net.mode === 'mqtt') {
+    const n = liveClients().length;
+    return 'mqtt · ' + n + ' broker' + (n === 1 ? '' : 's');
+  }
   if (net.mode === 'ntfy') return 'ntfy.sh';
   return '—';
 }
 
 function transportClose() {
-  try { if (net.client) { net.client.removeAllListeners && net.client.removeAllListeners(); net.client.end(true); } } catch (e) {}
+  net.clients.forEach(c => { try { c.removeAllListeners && c.removeAllListeners(); c.end(true); } catch (e) {} });
+  net.clients = [];
   try { if (net.ws) { net.ws.onclose = null; net.ws.close(); } } catch (e) {}
-  net.client = null; net.ws = null;
+  net.ws = null;
 }
 
 /* every message goes out the currently connected link; state is retained */
 function relaySend(obj, retain, retries) {
   if (!net.topic) return;
   obj.from = net.id;
+  if (!obj.mid) obj.mid = net.id + ':' + (++net.midSeq);
   const body = JSON.stringify(obj);
 
   if (net.mode === 'mqtt') {
-    if (!net.client || !net.client.connected) { net.queued.push({ body, retain }); return; }
-    try { net.client.publish(mqttTopic(net.code), body, { qos: 1, retain: !!retain }); }
-    catch (e) { net.queued.push({ body, retain }); }
+    const live = liveClients();
+    if (!live.length) { net.queued.push({ body, retain }); return; }
+    // send on all of them: the other player may be attached to a different one
+    live.forEach(c => { try { c.publish(mqttTopic(net.code), body, { qos: 1, retain: !!retain }); } catch (e) {} });
     return;
   }
 
@@ -1266,11 +1274,12 @@ function relaySend(obj, retain, retries) {
     .catch(() => { if ((retries || 0) < 3) setTimeout(() => relaySend(obj, retain, (retries || 0) + 1), 1500); });
 }
 function flushQueued() {
-  if (net.mode !== 'mqtt' || !net.client || !net.client.connected) return;
+  const live = liveClients();
+  if (net.mode !== 'mqtt' || !live.length) return;
   const q = net.queued.splice(0);
-  for (const item of q) {
-    try { net.client.publish(mqttTopic(net.code), item.body, { qos: 1, retain: !!item.retain }); } catch (e) {}
-  }
+  for (const item of q) live.forEach(c => {
+    try { c.publish(mqttTopic(net.code), item.body, { qos: 1, retain: !!item.retain }); } catch (e) {}
+  });
 }
 
 function onLinkUp() {
@@ -1296,55 +1305,74 @@ function onLinkUp() {
 
 function onLinkMessage(raw) {
   net.lastRx = Date.now();
+  if (!raw) return;
   let m; try { m = JSON.parse(raw); } catch (e) { return; }
   if (!m || m.from === net.id) return;
+  if (m.mid) {                                  // same message, several brokers
+    if (net.seenMids.indexOf(m.mid) !== -1) return;
+    net.seenMids.push(m.mid);
+    if (net.seenMids.length > 200) net.seenMids.splice(0, 100);
+  }
   net.lastSeen = Date.now();
   handleRelay(m);
 }
 
 /* ---------- MQTT ---------- */
-/* All brokers are tried at once and the first to answer wins. Trying them in
-   turn meant a slow start whenever the first was unreachable, which looks
-   exactly like "online is broken". */
+/* We attach to every broker we can reach and publish on all of them. Picking
+   just one was the bug that broke online play: two players racing the same
+   list could settle on different servers and never see each other. */
 async function openMqtt() {
   const ok = await loadScript(MQTT_SRCS, () => typeof window.mqtt === 'object' && !!window.mqtt.connect);
   if (!ok) return false;
 
-  const attempts = [];
-  const winner = await new Promise(resolve => {
-    let settled = false;
-    const done = v => { if (!settled) { settled = true; resolve(v); } };
-    const overall = setTimeout(() => done(null), 8500);
+  const attach = c => {
+    if (net.clients.indexOf(c) === -1) net.clients.push(c);
+    try { c.subscribe(mqttTopic(net.code), { qos: 1 }, () => {}); } catch (e) {}
+    c.on('message', (t, payload) => onLinkMessage(payload && payload.toString()));
+    c.on('close', () => { if (!liveClients().length) net.wsOpen = false; });
+    c.on('reconnect', () => {});
+  };
 
-    BROKERS.forEach((url, i) => {
-      let c;
-      try {
-        c = window.mqtt.connect(url, {
-          clientId: 'bg_' + net.id + '_' + Math.random().toString(16).slice(2, 8),
-          clean: true, keepalive: 30, connectTimeout: 6000, reconnectPeriod: 4000,
-        });
-      } catch (e) { return; }
-      attempts.push(c);
-      c.on('connect', () => { clearTimeout(overall); done({ client: c, i }); });
-      c.on('error', () => {});
+  let first = null;
+  const started = [];
+  BROKERS.forEach(url => {
+    let c;
+    try {
+      c = window.mqtt.connect(url, {
+        clientId: 'bg_' + net.id + '_' + Math.random().toString(16).slice(2, 8),
+        clean: true, keepalive: 30, connectTimeout: 6000, reconnectPeriod: 5000,
+      });
+    } catch (e) { return; }
+    started.push(c);
+    c.on('error', () => {});
+    c.on('connect', () => {
+      const isFirst = !liveClients().length || !net.mode;
+      attach(c);
+      net.mode = 'mqtt';
+      if (isFirst && first) first();
+      else {
+        // a later broker joined the party — re-announce so anyone attached
+        // only to this one discovers us
+        flushQueued();
+        if (net.role === 'host') { net.lastSent = ''; broadcast(true); }
+        else if (!net.paired) relaySend({ t: 'hello' });
+        netStatus(net.paired ? 'Connected — ' + linkLabel() + '.' : 'Waiting for your opponent — code ' + net.code + '.', net.paired ? 'on' : 'wait');
+      }
     });
-
-    if (!attempts.length) { clearTimeout(overall); done(null); }
   });
 
-  // shut down whichever links lost the race
-  attempts.forEach(c => {
-    if (winner && c === winner.client) return;
-    try { c.removeAllListeners && c.removeAllListeners(); c.end(true); } catch (e) {}
-  });
-  if (!winner) return false;
+  if (!started.length) return false;
 
-  const client = winner.client;
-  net.client = client; net.mode = 'mqtt'; net.brokerIdx = winner.i;
-  client.subscribe(mqttTopic(net.code), { qos: 1 }, () => {});
-  client.on('message', (t, payload) => onLinkMessage(payload.toString()));
-  client.on('close', () => { net.wsOpen = false; });
-  client.on('reconnect', () => netStatus('Reconnecting…', 'wait'));
+  const connected = await new Promise(resolve => {
+    const t = setTimeout(() => resolve(liveClients().length > 0), 9000);
+    first = () => { clearTimeout(t); resolve(true); };
+  });
+
+  if (!connected) {
+    started.forEach(c => { try { c.end(true); } catch (e) {} });
+    net.clients = [];
+    return false;
+  }
   onLinkUp();
   return true;
 }
@@ -1455,7 +1483,12 @@ function handleRelay(m) {
     if (myColor === null) {
       // the retained position tells us which seat is free, so we can join
       // straight off the board without waiting for a handshake
-      if (m.hs === 1 || m.hs === -1) { myColor = -m.hs; stopHello(); }
+      if (m.hs === 1 || m.hs === -1) {
+        myColor = -m.hs;
+        // the board may be a leftover from an abandoned game, so keep announcing
+        // ourselves until the host answers rather than assuming anyone is home
+        relaySend({ t: 'hello' });
+      }
       else { relaySend({ t: 'hello' }); return; }
     }
     if (m.run && m.run !== net.peerRun) {                          // host restarted; counters reset
@@ -1482,7 +1515,7 @@ function peerGone() {
   if (!net.paired) return;
   net.paired = false;
   if (net.role === 'host') { netStatus('Opponent left. They can rejoin with code ' + net.code + '.', 'wait'); toast('Opponent disconnected — code ' + net.code + ' still works.', true); }
-  else { netStatus('Host disconnected. Waiting for them to come back…', 'wait'); toast('Lost the host — trying to reconnect…', true); startHello(); }
+  else { netStatus('No answer from the host on code ' + net.code + ' — still trying.', 'err'); toast('Host is not responding.', true); startHello(); }
   gate(); draw();
 }
 
@@ -1534,7 +1567,7 @@ function watchTick() {
     if (net.inflight.tries % 6 === 0) relaySend({ t: 'resync' });
   }
 
-  if (net.paired && now - net.lastSeen > PEER_TIMEOUT_MS) peerGone();
+  if (net.paired && now - net.lastSeen > (net.role === 'guest' ? HOST_QUIET_MS : PEER_TIMEOUT_MS)) peerGone();
   else if (net.role === 'guest' && net.paired && now - net.lastSeen > 20000) relaySend({ t: 'resync' });
 }
 
@@ -1588,8 +1621,8 @@ function joinGame(code) {
 
 function leaveNet(quiet) {
   if (net.role && net.paired) relaySend({ t: 'bye' });
-  if (net.role === 'host' && net.mode === 'mqtt' && net.client && net.client.connected) {
-    try { net.client.publish(mqttTopic(net.code), '', { qos: 1, retain: true }); } catch (e) {}  // clear the retained board
+  if (net.role === 'host' && net.mode === 'mqtt') {                     // clear the retained board
+    liveClients().forEach(c => { try { c.publish(mqttTopic(net.code), '', { qos: 1, retain: true }); } catch (e) {} });
   }
   net.closed = true;
   stopHello(); stopWatch();
@@ -1601,7 +1634,7 @@ function leaveNet(quiet) {
   net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
   net.seq = 0; net.lastSeq = 0; net.run = null; net.peerRun = null; net.peerGid = null;
   net.outbox = []; net.inflight = null; net.actId = 0; net.ackId = 0; net.guestFrom = null; net.everOpened = false;
-  net.mode = null; net.brokerIdx = 0; net.queued = []; net.opening = false;
+  net.mode = null; net.queued = []; net.opening = false; net.seenMids = []; net.midSeq = 0;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1620,6 +1653,9 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('focus', () => { if (net.role && !net.closed) watchTick(); });
 
 window.addEventListener('beforeunload', () => {
+  if (net.role === 'host' && net.mode === 'mqtt') {
+    liveClients().forEach(c => { try { c.publish(mqttTopic(net.code), '', { qos: 1, retain: true }); } catch (e) {} });
+  }
   if (net.role && net.topic) {
     try { navigator.sendBeacon(RELAY_HTTP + net.topic, JSON.stringify({ t: 'bye', from: net.id })); } catch (e) {}
   }
