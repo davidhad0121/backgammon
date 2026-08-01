@@ -458,13 +458,13 @@
       <div id="qr" hidden></div>
       <input id="joinLink" readonly hidden>
       <button class="small" id="btnCopy" hidden>Copy invite link</button>
-      <div class="netnote" id="hostNote" hidden>Send the link or have them scan the code.<br>They can also type the code on the Join tab.</div>
+      <div class="netnote" id="hostNote" hidden>Send the link, have them scan the code,<br>or just tell them the number.</div>
     </div>
 
     <div id="joinPane" class="netbox" hidden>
-      <input id="codeIn" maxlength="6" placeholder="CODE" autocomplete="off" spellcheck="false">
+      <input id="codeIn" maxlength="6" placeholder="1" inputmode="numeric" autocomplete="off" spellcheck="false">
       <button class="gold wide" id="btnJoin">Join game</button>
-      <div class="netnote">Ask the host for the code they were given,<br>or just open the link they send you.</div>
+      <div class="netnote">Type the number the host was given,<br>or just open the link they send you.</div>
     </div>
 
     <div id="netStatus"></div>
@@ -1118,7 +1118,7 @@ document.addEventListener('keydown', e => {
 const RELAY_HTTP = 'https://ntfy.sh/';
 const RELAY_WS   = 'wss://ntfy.sh/';
 const HELLO_MS = 2500, HEARTBEAT_MS = 9000, PEER_TIMEOUT_MS = 75000,
-      GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 40000;
+      GIVE_UP_MS = 25000, SOCKET_SILENCE_MS = 100000;   // relay keepalive is ~45s; never undercut it
 
 const net = {
   role: null,          // null | 'host' | 'guest'
@@ -1142,8 +1142,9 @@ const net = {
   helloTimer: null, hbTimer: null, watchTimer: null, retryTimer: null, joinedAt: 0,
 };
 
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no I/O/0/1
-const roomCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
+/* Short numeric codes: this is a private game between two people, so a big
+   keyspace buys nothing and a one- or two-digit code is far easier to say. */
+const roomCode = () => String(1 + Math.floor(Math.random() * 10));
 const topicFor = code => 'bkgmnjd' + code.toLowerCase();
 const randomId = () => Math.random().toString(36).slice(2, 10);
 
@@ -1385,7 +1386,8 @@ function startHeartbeat() {
   clearInterval(net.hbTimer);
   net.hbTimer = setInterval(() => {
     if (!net.role) return;
-    relaySend(net.role === 'host' ? { t: 'ping', q: net.seq, run: net.run } : { t: 'ping' });
+    if (net.role !== 'host') { relaySend({ t: 'ping' }); return; }
+    relaySend(net.paired ? { t: 'ping', q: net.seq, run: net.run } : { t: 'hostup', run: net.run });
   }, HEARTBEAT_MS);
 }
 function startWatch() {
@@ -1451,7 +1453,7 @@ function hostGame(seat, fixedCode) {
 
 function joinGame(code) {
   code = (code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (code.length < 4) { netStatus('Enter the code the host gave you.', 'err'); return; }
+  if (!code.length) { netStatus('Enter the code the host gave you.', 'err'); return; }
   leaveNet(true);
   net.role = 'guest';
   net.code = code;
