@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#14100c">
-<title>Backgammon — Josh vs David</title>
+<title>Backgammon</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; height: 100dvh; }
@@ -65,6 +65,8 @@
   .pip .nm { display: flex; align-items: center; gap: 7px; font-size: 11.5px; letter-spacing: 1px; color: #c0ac8c; }
   .pip .v { font-size: 27px; color: #f0e0bc; line-height: 1.05; text-align: right; }
   .pip .d { font-size: 10px; color: #7d6d56; text-align: right; min-height: 13px; }
+  #cubeInfo { font-size: 9.5px; letter-spacing: 1px; color: #8fb6d6; text-align: center; }
+  body.nopips .pip .v, body.nopips .pip .d, body.nopips #lead { display: none; }
   #lead { font-size: 10.5px; color: #9c8a70; text-align: center; line-height: 1.4; border-top: 1px solid #372a1c; padding-top: 8px; }
   #netpill {
     font-size: 9.5px; letter-spacing: 1.4px; text-align: center; padding: 5px 4px;
@@ -96,6 +98,10 @@
   button.gold:hover:not(:disabled) { background: #a37b2e; }
   button.wide { width: 100%; padding: 12px; font-size: 14px; }
   #roll { font-size: 15px; padding: 9px 26px; background: #8a6626; border-color: #b08a3c; font-weight: bold; }
+  button.cube { background: #2f4a5c; border-color: #4a7490; font-weight: bold; }
+  button.cube:hover:not(:disabled) { background: #3a5c72; }
+  button.take { background: #2f5c34; border-color: #4a8a52; font-weight: bold; }
+  button.drop { background: #5c2f2f; border-color: #8a4a4a; font-weight: bold; }
   #roll:hover:not(:disabled) { background: #a37b2e; }
   #menuBtn { margin-left: 6px; }
   select {
@@ -124,6 +130,7 @@
   }
   .card .btns { display: flex; gap: 9px; justify-content: flex-end; margin-top: 4px; }
   #card input { width: 100px; }
+  #setCard input[type=text] { width: 150px; text-align: left; font-size: 15px; }
   .sub { font-size: 12px; color: #9c8a70; text-align: center; line-height: 1.5; margin: -4px 0 2px; }
 
   /* start screen */
@@ -318,28 +325,29 @@
 
 <div id="stage">
   <div id="score">
-    <div class="plate" id="plateW"><span class="who"><span class="dot w"></span>JOSH<span class="youtag" id="youW" hidden>YOU</span></span><span class="pts" id="ptsW">0</span></div>
+    <div class="plate" id="plateW"><span class="who"><span class="dot w"></span><span class="nmtext">PLAYER 1</span><span class="youtag" id="youW" hidden>YOU</span></span><span class="pts" id="ptsW">0</span></div>
     <div id="mid">
       <div id="games">GAME 1</div>
       <div id="last">Match not started</div>
       <div id="history"></div>
     </div>
-    <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span>DAVID<span class="dot b"></span></span></div>
+    <div class="plate" id="plateB"><span class="pts" id="ptsB" style="margin-left:0">0</span><span class="who" style="margin-left:auto"><span class="youtag" id="youB" hidden>YOU</span><span class="nmtext">PLAYER 2</span><span class="dot b"></span></span></div>
   </div>
 
   <div id="side">
       <h3>PIP COUNT</h3>
       <div class="pip" id="pipW">
-        <div class="nm"><span class="dot w" style="width:13px;height:13px"></span>JOSH</div>
+        <div class="nm"><span class="dot w" style="width:13px;height:13px"></span><span id="pipWname">PLAYER 1</span></div>
         <div class="v" id="pipWv">167</div>
         <div class="d" id="pipWd"></div>
       </div>
       <div class="pip" id="pipB">
-        <div class="nm"><span class="dot b" style="width:13px;height:13px"></span>DAVID</div>
+        <div class="nm"><span class="dot b" style="width:13px;height:13px"></span><span id="pipBname">PLAYER 2</span></div>
         <div class="v" id="pipBv">167</div>
         <div class="d" id="pipBd"></div>
       </div>
       <div id="lead">Level</div>
+      <div id="cubeInfo"></div>
       <div id="netpill">SAME DEVICE</div>
       <div id="lastMove"></div>
       <button class="small" id="themeBtn">Board &amp; Chips</button>
@@ -352,6 +360,9 @@
   <div id="panel">
     <span id="msg"></span>
     <button id="roll">Roll</button>
+    <button id="dblBtn" class="cube" hidden>Double</button>
+    <button id="takeBtn" class="take" hidden>Take</button>
+    <button id="dropBtn" class="drop" hidden>Drop</button>
     <span class="pair"><button id="undo" disabled>Undo</button><button class="small" id="menuBtn">Menu</button></span>
   </div>
   <div class="hint" id="hint">Click a point then a destination (both dice combine) · double-click a checker to bear it off</div>
@@ -370,7 +381,17 @@
 <div id="startModal" class="overlay">
   <div id="startCard" class="card">
     <h3>BACKGAMMON</h3>
-    <div class="sub">Josh vs David</div>
+    <div class="sub" id="startSub"></div>
+    <label style="justify-content:center;gap:9px">Play to
+      <select id="startTarget">
+        <option value="1">1 point</option>
+        <option value="3">3 points</option>
+        <option value="5">5 points</option>
+        <option value="7">7 points</option>
+        <option value="11">11 points</option>
+        <option value="0">No limit</option>
+      </select>
+    </label>
     <div class="modes">
       <button class="gold wide" id="startLocal">Play on this device</button>
       <button class="wide" id="startOnline">Play online</button>
@@ -387,14 +408,38 @@
     <label>First move
       <select id="starter" title="Override who opens this game">
         <option value="auto">Default</option>
-        <option value="1">Josh</option>
-        <option value="-1">David</option>
+        <option value="1" id="starterOptA">Player 1</option>
+        <option value="-1" id="starterOptB">Player 2</option>
       </select>
     </label>
     <button class="gold wide" id="playOnline">Play Online</button>
+    <button class="wide small" id="setBtn">Settings</button>
     <button class="wide small" id="editScore">Edit Score</button>
     <button class="wide small" id="resetScore">Reset Match</button>
     <div class="btns"><button class="small" id="menuClose">Close</button></div>
+  </div>
+</div>
+
+<!-- settings -->
+<div id="setModal" class="overlay" hidden>
+  <div id="setCard" class="card">
+    <h3>SETTINGS</h3>
+    <label>Your name <input id="setMyName" maxlength="14" type="text" autocomplete="off"></label>
+    <label>Opponent <input id="setOppName" maxlength="14" type="text" autocomplete="off"></label>
+    <div class="netnote" style="text-align:left">Saved on this device. Online, each player sends their own name.</div>
+    <label>Match length
+      <select id="setTarget">
+        <option value="1">1 point</option>
+        <option value="3">3 points</option>
+        <option value="5">5 points</option>
+        <option value="7">7 points</option>
+        <option value="11">11 points</option>
+        <option value="0">No limit</option>
+      </select>
+    </label>
+    <label>Doubling cube <input id="setCube" type="checkbox" style="width:auto"></label>
+    <label>Show pip counts <input id="setPips" type="checkbox" style="width:auto"></label>
+    <div class="btns"><button id="setSave">Save</button></div>
   </div>
 </div>
 
@@ -425,8 +470,8 @@
 <div id="modal" class="overlay" hidden>
   <div id="card" class="card">
     <h3>EDIT SCORE</h3>
-    <label>Josh <input id="inW" type="number" min="0" step="1"></label>
-    <label>David <input id="inB" type="number" min="0" step="1"></label>
+    <label><span id="editNameW">Player 1</span> <input id="inW" type="number" min="0" step="1"></label>
+    <label><span id="editNameB">Player 2</span> <input id="inB" type="number" min="0" step="1"></label>
     <label>Game # <input id="inG" type="number" min="1" step="1"></label>
     <div class="btns">
       <button class="small" id="mCancel">Cancel</button>
@@ -449,8 +494,8 @@
       <div class="sidechoice">
         I'll play as
         <select id="hostSide">
-          <option value="1">Josh</option>
-          <option value="-1">David</option>
+          <option value="1" id="sideOptA">Player 1</option>
+          <option value="-1" id="sideOptB">Player 2</option>
         </select>
       </div>
       <button class="gold wide" id="btnHost">Create game</button>
@@ -480,7 +525,44 @@
 
 const cv = document.getElementById('board'), ctx = cv.getContext('2d');
 const W = 1120, H = 740;
-const NAMES = { 1: 'Josh', '-1': 'David' };
+/* ---------- per-device preferences ---------- */
+const PREFS_KEY = 'backgammon.prefs.v2';
+let prefs = { myName: '', oppName: '', cube: true, pips: false, target: 7 };
+function loadPrefs() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    if (typeof o.myName === 'string') prefs.myName = o.myName.slice(0, 14);
+    if (typeof o.oppName === 'string') prefs.oppName = o.oppName.slice(0, 14);
+    if (typeof o.cube === 'boolean') prefs.cube = o.cube;
+    if (typeof o.pips === 'boolean') prefs.pips = o.pips;
+    if (Number.isFinite(o.target)) prefs.target = Math.max(0, o.target | 0);
+  } catch (e) {}
+}
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} }
+
+/* Names are attached to seats, not baked in. Seat 1 plays the light checkers. */
+let seatNames = { 1: 'Light', '-1': 'Dark' };
+function refreshNames() {
+  if (!S) { seatNames[1] = prefs.myName || 'Player 1'; seatNames[-1] = prefs.oppName || 'Player 2'; }
+  const mine = prefs.myName || 'You';
+  const theirs = prefs.oppName || 'Opponent';
+  if (myColor === null) { seatNames[1] = mine; seatNames[-1] = theirs; }
+  else { seatNames[myColor] = mine; seatNames[-myColor] = net.oppName || theirs; }
+  const initial = c => (seatNames[c] || '?').trim().charAt(0).toUpperCase() || '?';
+  seatNames.iA = initial(1); seatNames.iB = initial(-1);
+  const setText = (host, txt) => {
+    const el = host && host.querySelector ? host.querySelector('.nmtext') : null;
+    if (el) el.textContent = txt;
+  };
+  setText($('plateW'), seatNames[1].toUpperCase());
+  setText($('plateB'), seatNames[-1].toUpperCase());
+  const pw = $('pipWname'), pb = $('pipBname');
+  if (pw) pw.textContent = seatNames[1].toUpperCase();
+  if (pb) pb.textContent = seatNames[-1].toUpperCase();
+  [['starterOptA', 1], ['starterOptB', -1], ['sideOptA', 1], ['sideOptB', -1],
+   ['editNameW', 1], ['editNameB', -1]].forEach(([id, c]) => { const e = $(id); if (e) e.textContent = seatNames[c]; });
+  const sub = $('startSub'); if (sub) sub.textContent = (prefs.myName || 'You') + ' vs ' + (prefs.oppName || 'Opponent');
+}
 
 /* ---------- geometry ---------- */
 const BORDER = 30, BAR_W = 64, TRAY_W = 74;
@@ -507,7 +589,7 @@ const toLogical = s => viewFlip ? 23 - s : s;
 const nearPlayer = () => viewFlip ? -1 : 1;
 
 /* ---------- state ---------- */
-let match = { W: 0, B: 0, game: 1, log: [], lastWinner: null };
+let match = { W: 0, B: 0, game: 1, log: [], lastWinner: null, target: 7, crawfordDone: false, over: false };
 let S;
 let rollAvailable = false, undoAvailable = false;
 
@@ -516,7 +598,7 @@ let myColor = null;
 
 const $ = id => document.getElementById(id);
 const msg = t => { $('msg').textContent = t; };
-const name = c => NAMES[c];
+const name = c => seatNames[c] || (c === 1 ? 'Light' : 'Dark');
 const avail = () => S.dice.filter(d => !d.used).map(d => d.v);
 const setRoll = v => { rollAvailable = v; };
 const setUndo = v => { undoAvailable = v; };
@@ -533,7 +615,19 @@ const desiredFlip = () => myColor !== null ? myColor === -1 : (S.phase === 'play
 /* buttons reflect game state, then get narrowed to my seat when online */
 function gate() {
   const mineNow = myColor === null || actor() === myColor;
-  $('roll').disabled = !rollAvailable || !mineNow;
+  const over = S && S.phase === 'over';
+  const decider = S && S.dbl ? -S.dbl.by : null;
+  const myDecision = decider !== null && (myColor === null || myColor === decider);
+
+  $('takeBtn').hidden = !(S && S.dbl) || !myDecision;
+  $('dropBtn').hidden = $('takeBtn').hidden;
+  const mayDouble = S && canDouble(myColor === null ? S.turn : myColor) && mineNow;
+  $('dblBtn').hidden = !mayDouble;
+  if (!$('dblBtn').hidden) $('dblBtn').textContent = 'Double to ' + (S.cube.v * 2);
+
+  $('roll').hidden = !!(S && S.dbl);
+  $('roll').disabled = over ? false : (!rollAvailable || !mineNow);
+  if (over) $('roll').textContent = match.over ? 'New Match' : 'Next Game';
   $('undo').disabled = !undoAvailable || (myColor !== null && S.turn !== myColor);
   $('starter').disabled = S.phase === 'over' || (S.phase === 'play' && S.dice.length > 0);
   $('youW').hidden = myColor !== 1;
@@ -555,7 +649,8 @@ function saveState() {
   try {
     if (!S) return;
     const lean = { pts: S.pts, bar: S.bar, off: S.off, turn: S.turn, dice: S.dice,
-                   phase: S.phase, open: S.open, hist: S.hist, gid: S.gid };
+                   phase: S.phase, open: S.open, hist: S.hist, gid: S.gid,
+                   cube: S.cube, dbl: S.dbl, crawford: S.crawford };
     localStorage.setItem(STATE_KEY, JSON.stringify({
       t: Date.now(), s: lean,
       ui: { msg: $('msg').textContent, rl: $('roll').textContent, cr: rollAvailable, cu: undoAvailable },
@@ -585,6 +680,9 @@ function loadMatch() {
       game: Number.isFinite(o.game) ? Math.max(1, o.game | 0) : 1,
       log: Array.isArray(o.log) ? o.log.filter(l => l && typeof l.full === 'string') : [],
       lastWinner: o.lastWinner === 1 || o.lastWinner === -1 ? o.lastWinner : null,
+      target: Number.isFinite(o.target) ? Math.max(0, o.target | 0) : prefs.target,
+      crawfordDone: !!o.crawfordDone,
+      over: !!o.over,
     };
   } catch (e) { storeOK = false; }
 }
@@ -597,11 +695,17 @@ function newGame() {
     turn: 1,
     dice: [], sel: null, history: [], hist: [],
     gid: Math.random().toString(36).slice(2, 8),
+    cube: { v: 1, own: 0 },       // value, and which side owns it (0 = centred)
+    dbl: null,                    // a double awaiting take/drop
+    crawford: false,              // the one game after match point where the cube is off
     phase: 'opening',
     open: { w: null, b: null },
   };
   [[23,1,2],[12,1,5],[7,1,3],[5,1,5],[0,-1,2],[11,-1,5],[16,-1,3],[18,-1,5]]
     .forEach(([p,c,n]) => S.pts[p] = { c, n });
+  // Crawford: the single game played without a cube once someone reaches match point
+  S.crawford = match.target > 0 && !match.crawfordDone &&
+               (match.W === match.target - 1 || match.B === match.target - 1);
   spin = null; flashState = null;
   setRoll(true); setUndo(false);
   $('starter').value = 'auto';
@@ -630,8 +734,8 @@ function startWith(c, text) {
 }
 
 function openingPrompt() {
-  if (S.open.w === null)      { $('roll').textContent = 'Josh Rolls';  msg('Opening roll — Josh rolls one die.'); }
-  else if (S.open.b === null) { $('roll').textContent = 'David Rolls'; msg('Josh rolled ' + S.open.w + '. David rolls one die.'); }
+  if (S.open.w === null)      { $('roll').textContent = name(1) + ' Rolls';  msg('Opening roll — ' + name(1) + ' rolls one die.'); }
+  else if (S.open.b === null) { $('roll').textContent = name(-1) + ' Rolls'; msg(name(1) + ' rolled ' + S.open.w + '. ' + name(-1) + ' rolls one die.'); }
 }
 
 /* ---------- pip count ---------- */
@@ -652,17 +756,23 @@ function renderPips() {
   $('pipBd').textContent = b < w ? '−' + (w - b) : (b > w ? '+' + (b - w) : '—');
   $('pipW').classList.toggle('active', S.phase === 'play' && S.turn === 1);
   $('pipB').classList.toggle('active', S.phase === 'play' && S.turn === -1);
-  $('lead').textContent = w === b ? 'Level' : (w < b ? 'Josh leads by ' + (b - w) : 'David leads by ' + (w - b));
+  document.body.classList.toggle('nopips', !prefs.pips);
+  $('lead').textContent = w === b ? 'Level' : (w < b ? name(1) + ' leads by ' + (b - w) : name(-1) + ' leads by ' + (w - b));
 }
 
 function renderScore() {
   $('ptsW').textContent = match.W;
   $('ptsB').textContent = match.B;
-  $('games').textContent = 'GAME ' + match.game;
   $('plateW').classList.toggle('active', S && S.phase === 'play' && S.turn === 1);
   $('plateB').classList.toggle('active', S && S.phase === 'play' && S.turn === -1);
   $('last').textContent = match.log.length ? match.log[match.log.length - 1].full : 'Match not started';
   $('history').textContent = match.log.slice(-8).map(l => l.short).join('   ');
+  $('games').textContent = 'GAME ' + match.game + (match.target ? ' · TO ' + match.target : '');
+  const ci = $('cubeInfo');
+  if (!prefs.cube) ci.textContent = '';
+  else if (S && S.crawford) ci.textContent = 'CRAWFORD — NO CUBE';
+  else if (S && S.cube) ci.textContent = 'CUBE ' + S.cube.v + (S.cube.own ? ' · ' + name(S.cube.own).toUpperCase() : ' · CENTRE');
+  else ci.textContent = '';
   pipCache = ''; renderPips();
   renderLastMove();
 }
@@ -769,7 +879,7 @@ function recordMove(txt) {
   if (t) t.m.push(txt);
 }
 function trimHist() { if (S.hist.length > 120) S.hist.splice(0, S.hist.length - 120); }
-const turnText = t => (t.c === 1 ? 'Josh' : 'David') + '  ' + t.d.join('-') + (t.m.length ? '  ' + t.m.join(' ') : '  —');
+const turnText = t => name(t.c) + '  ' + t.d.join('-') + (t.m.length ? '  ' + t.m.join(' ') : '  —');
 function lastTurnText() {
   for (let i = S.hist.length - 1; i >= 0; i--) if (S.hist[i].m.length) return turnText(S.hist[i]);
   return '';
@@ -794,6 +904,40 @@ function applySequence(seq) {
   setUndo(true);
 }
 
+/* ---------- the doubling cube ---------- */
+function cubeOn() { return prefs.cube && S && !S.crawford && !match.over; }
+function canDouble(c) {
+  return cubeOn() && S.phase === 'play' && S.turn === c && !S.dice.length && !S.dbl
+      && (S.cube.own === 0 || S.cube.own === c) && S.cube.v < 64;
+}
+function doDouble(who) {
+  const c = who === null ? S.turn : who;
+  if (!canDouble(c)) return;
+  S.dbl = { by: c };
+  setRoll(false); setUndo(false);
+  msg(name(c) + ' doubles to ' + (S.cube.v * 2) + ' — ' + name(-c) + ', take or drop?');
+  sfx.join();
+  renderScore(); draw(); saveState();
+}
+function doTake(who) {
+  if (!S.dbl) return;
+  const taker = -S.dbl.by;
+  if (who !== null && who !== taker) return;
+  S.cube.v *= 2; S.cube.own = taker; S.dbl = null;
+  setRoll(true);
+  msg(name(taker) + ' takes — cube at ' + S.cube.v + '. ' + name(S.turn) + ' to roll.');
+  sfx.place();
+  renderScore(); draw(); saveState();
+}
+function doDrop(who) {
+  if (!S.dbl) return;
+  const dropper = -S.dbl.by;
+  if (who !== null && who !== dropper) return;
+  const winner = S.dbl.by;
+  S.dbl = null;
+  endGame(winner, true);   // a dropped double pays the value before the offer
+}
+
 function scoreGame(winner) {
   const l = -winner;
   if (S.off[l] > 0) return { pts: 1, label: 'single' };
@@ -803,18 +947,26 @@ function scoreGame(winner) {
   return { pts: 2, label: 'gammon' };
 }
 
-function endGame(winner) {
-  const r = scoreGame(winner);
+function endGame(winner, dropped) {
+  const r = dropped ? { pts: 1, label: 'double dropped' } : scoreGame(winner);
+  const mult = S.cube.v;
+  r.pts = r.pts * mult;
+  const label = r.label + (mult > 1 ? ' × ' + mult : '');
   if (winner === 1) match.W += r.pts; else match.B += r.pts;
+  if (S.crawford) match.crawfordDone = true;
+  if (match.target > 0 && (match.W >= match.target || match.B >= match.target)) match.over = true;
   match.log.push({
-    full: 'Game ' + match.game + ' — ' + name(winner) + ' +' + r.pts + ' (' + r.label + ')',
-    short: 'G' + match.game + ' ' + (winner === 1 ? 'J' : 'D') + '+' + r.pts
+    full: 'Game ' + match.game + ' — ' + name(winner) + ' +' + r.pts + ' (' + label + ')',
+    short: 'G' + match.game + ' ' + (winner === 1 ? seatNames.iA : seatNames.iB) + '+' + r.pts
   });
   match.game++;
   match.lastWinner = winner;
   saveMatch();
   S.phase = 'over';
-  msg(name(winner) + ' wins ' + r.pts + ' point' + (r.pts > 1 ? 's' : '') + ' — ' + r.label + '.');
+  msg(match.over
+    ? name(winner) + ' wins the match ' + Math.max(match.W, match.B) + '–' + Math.min(match.W, match.B) + '.'
+    : name(winner) + ' wins ' + r.pts + ' point' + (r.pts > 1 ? 's' : '') + ' — ' + label + '.');
+  $('roll').textContent = match.over ? 'New Match' : 'Next Game';
   setRoll(false); setUndo(false);
   sfx.win();
   renderScore();
@@ -946,7 +1098,7 @@ function sendAct(a) {
     return;
   }
   net.actId++;
-  net.outbox.push({ t: 'act', a, id: net.actId });
+  net.outbox.push({ t: 'act', a, id: net.actId, nm: prefs.myName });
   pumpOutbox();
 }
 function pumpOutbox() {
@@ -967,6 +1119,13 @@ function applyAct(a, who) {
     case 'move':    doMove(a.from, a.to, who); break;
     case 'undo':    doUndo(who); break;
     case 'new':     newGame(); break;
+    case 'newmatch': match = { W: 0, B: 0, game: 1, log: [], lastWinner: null,
+                               target: prefs.target, crawfordDone: false, over: false };
+                    saveMatch(); clearState(); newGame(); break;
+    case 'double':  doDouble(who); break;
+    case 'take':    doTake(who); break;
+    case 'drop':    doDrop(who); break;
+    case 'target':  match.target = Math.max(0, a.v | 0); match.over = false; saveMatch(); renderScore(); draw(); break;
     case 'reset':   match = { W: 0, B: 0, game: 1, log: [], lastWinner: null }; saveMatch(); clearState(); newGame(); break;
     case 'starter': doStarter(a.v); break;
     case 'score':   doEditScore(a.w, a.b, a.g); break;
@@ -1088,7 +1247,13 @@ function hitTest(x, y) {
   return toLogical(s);
 }
 
-$('roll').onclick = () => act({ type: 'roll' });
+$('roll').onclick = () => {
+  if (S.phase === 'over') { act({ type: match.over ? 'newmatch' : 'new' }); return; }
+  act({ type: 'roll' });
+};
+$('dblBtn').onclick  = () => act({ type: 'double' });
+$('takeBtn').onclick = () => act({ type: 'take' });
+$('dropBtn').onclick = () => act({ type: 'drop' });
 $('undo').onclick = () => act({ type: 'undo' });
 $('mCancel').onclick = () => { $('modal').hidden = true; };
 $('mSave').onclick = () => {
@@ -1126,7 +1291,7 @@ const net = {
   id: null,            // random per tab, so we ignore our own messages
   ws: null, clients: [], mode: null, queued: [], opening: false, wsOpen: false,
   midSeq: 0, seenMids: [],   // de-duplicates the same message arriving via several brokers
-  guestSeat: null,
+  guestSeat: null, oppName: null,
   paired: false,
   lastSeen: 0,
   lastSent: '',
@@ -1422,7 +1587,7 @@ function handleRelay(m) {
     if (net.role === 'guest') {
       net.peerRun = null; net.lastSeq = 0; net.paired = false;
       if (net.inflight) { net.outbox.unshift(net.inflight.msg); net.inflight = null; }
-      relaySend({ t: 'hello' });
+      relaySend({ t: 'hello', nm: prefs.myName });
       startHello();
       netStatus('Host is back — resyncing…', 'wait');
     }
@@ -1446,7 +1611,8 @@ function handleRelay(m) {
       const wasPaired = net.paired;
       if (m.from !== net.guestFrom) { net.guestFrom = m.from; net.ackId = 0; }
       stopWatch(); net.paired = true;
-      relaySend({ t: 'welcome', seat: net.guestSeat });
+      if (m.nm && m.nm !== net.oppName) { net.oppName = m.nm; refreshNames(); }
+      relaySend({ t: 'welcome', seat: net.guestSeat, nm: prefs.myName });
       net.lastSent = '';
       broadcast(true);
       netStatus('Connected — you are ' + name(myColor) + '.', 'on');
@@ -1460,6 +1626,7 @@ function handleRelay(m) {
       const id = m.id || 0;
       if (id && id <= net.ackId) { net.lastSent = ''; broadcast(true); return; } // already applied
       net.ackId = id;
+      if (m.nm && m.nm !== net.oppName) { net.oppName = m.nm; refreshNames(); }
       applyAct(m.a, net.guestSeat);
       net.lastSent = '';
       broadcast(true);
@@ -1473,6 +1640,8 @@ function handleRelay(m) {
     stopHello();
     net.paired = true;
     myColor = m.seat;
+    if (m.nm) net.oppName = m.nm;
+    refreshNames();
     netStatus('Connected — you are ' + name(myColor) + '.', 'on');
     viewFlip = desiredFlip();
     startWatch(); gate(); draw();
@@ -1485,6 +1654,8 @@ function handleRelay(m) {
       // straight off the board without waiting for a handshake
       if (m.hs === 1 || m.hs === -1) {
         myColor = -m.hs;
+        if (m.nm) net.oppName = m.nm;
+        refreshNames();
         // the board may be a leftover from an abandoned game, so keep announcing
         // ourselves until the host answers rather than assuming anyone is home
         relaySend({ t: 'hello' });
@@ -1522,7 +1693,7 @@ function peerGone() {
 function startHello() {
   stopHello();
   net.joinedAt = Date.now();
-  relaySend({ t: 'hello' });
+  relaySend({ t: 'hello', nm: prefs.myName });
   net.helloTimer = setInterval(() => {
     if (net.paired) { stopHello(); return; }
     if (Date.now() - net.joinedAt > GIVE_UP_MS) {
@@ -1530,7 +1701,7 @@ function startHello() {
       netStatus('Waiting for ' + net.code + ' — the host may be reconnecting.', 'wait');
       if ((Date.now() - net.joinedAt) % 8000 > HELLO_MS) return;
     }
-    relaySend({ t: 'hello' });
+    relaySend({ t: 'hello', nm: prefs.myName });
   }, HELLO_MS);
 }
 function stopHello() { clearInterval(net.helloTimer); net.helloTimer = null; }
@@ -1634,7 +1805,7 @@ function leaveNet(quiet) {
   net.paired = false; net.lastSent = ''; net.fx = null; net.lastFxSeen = 0; net.fxSeq = 0;
   net.seq = 0; net.lastSeq = 0; net.run = null; net.peerRun = null; net.peerGid = null;
   net.outbox = []; net.inflight = null; net.actId = 0; net.ackId = 0; net.guestFrom = null; net.everOpened = false;
-  net.mode = null; net.queued = []; net.opening = false; net.seenMids = []; net.midSeq = 0;
+  net.mode = null; net.queued = []; net.opening = false; net.seenMids = []; net.midSeq = 0; net.oppName = null;
   myColor = null;
   $('btnLeave').hidden = true;
   if (!quiet) {
@@ -1674,6 +1845,8 @@ function statePayload() {
     m: { W: match.W, B: match.B, g: match.game, lw: match.lastWinner, l: match.log.slice(-6) },
     h: S.hist.slice(-8), hn: S.hist.length,
     gid: S.gid, q: net.seq, run: net.run, ack: net.ackId, hs: myColor, code: net.code,
+    nm: prefs.myName, cu2: S.cube, dbl: S.dbl, cw: S.crawford,
+    tg: match.target, cwd: match.crawfordDone, mo: match.over, cubeOn: prefs.cube,
     msg: $('msg').textContent,
     rl: $('roll').textContent,
     cr: rollAvailable, cu: undoAvailable,
@@ -1700,6 +1873,11 @@ function applyState(p) {
   S.off = { 1: p.o[0], '-1': p.o[1] };
   S.turn = p.tu; S.phase = p.ph;
   S.dice = p.d.map(v => ({ v: Math.abs(v), used: v < 0 }));
+  if (p.cu2) S.cube = p.cu2;
+  S.dbl = p.dbl || null;
+  S.crawford = !!p.cw;
+  if (typeof p.cubeOn === 'boolean') prefs.cube = p.cubeOn;   // the host's table rules apply
+  if (p.nm) { net.oppName = p.nm; refreshNames(); }
   S.open = { w: p.op[0], b: p.op[1] };
   S.history = [];
   // keep the checker you had picked up, if it's still yours to move
@@ -1722,7 +1900,8 @@ function applyState(p) {
     S.hist = tailStart <= S.hist.length ? S.hist.slice(0, tailStart).concat(tail) : tail.slice();
   }
   const grew = S.hist.reduce((n, t) => n + t.m.length, 0) > movesBefore || total > have;
-  match = { W: p.m.W, B: p.m.B, game: p.m.g, lastWinner: p.m.lw, log: p.m.l || [] };
+  match = { W: p.m.W, B: p.m.B, game: p.m.g, lastWinner: p.m.lw, log: p.m.l || [],
+            target: p.tg || 0, crawfordDone: !!p.cwd, over: !!p.mo };
   saveMatch();
   if (grew) {
     const last = S.hist[S.hist.length - 1];
@@ -1985,7 +2164,7 @@ function drawDouble6(p) {
     ctx.translate(cx, H/2 - 26);
     ctx.rotate(rot); ctx.scale(s, s);
     ctx.shadowColor = 'rgba(255,180,60,.75)'; ctx.shadowBlur = 26;
-    drawDie(-size/2, -size/2, 6, size);
+    drawDie(-size/2, -size/2, 6, size, S.turn);
     ctx.restore();
   }
 
@@ -2237,10 +2416,15 @@ function drawStack(i) {
   }
 }
 
-function drawDie(x, y, v, s) {
+function drawDie(x, y, v, s, owner) {
+  const k = owner === 1 || owner === -1 ? CK(owner) : null;
   ctx.save();
   if (!ctx.shadowBlur) { ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 9; ctx.shadowOffsetY = 3; }
-  ctx.fillStyle = '#f7f1e2';
+  if (k) {
+    const face = ctx.createLinearGradient(x, y, x, y + s);
+    face.addColorStop(0, k.hi); face.addColorStop(1, k.mid);
+    ctx.fillStyle = face;
+  } else ctx.fillStyle = '#f7f1e2';
   const r = s * 0.14;
   ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.lineTo(x+s-r,y); ctx.quadraticCurveTo(x+s,y,x+s,y+r);
@@ -2250,7 +2434,7 @@ function drawDie(x, y, v, s) {
   ctx.fill();
   ctx.restore();
   ctx.save();
-  ctx.fillStyle = '#3a1410';
+  ctx.fillStyle = k ? k.text : '#3a1410';
   const q = s/4;
   const pips = { 1:[[2,2]], 2:[[1,1],[3,3]], 3:[[1,1],[2,2],[3,3]],
                  4:[[1,1],[3,1],[1,3],[3,3]], 5:[[1,1],[3,1],[2,2],[1,3],[3,3]],
@@ -2299,6 +2483,44 @@ function boardLayer() {
   return off;
 }
 
+function drawCube() {
+  if (!prefs.cube || !S.cube) return;
+  const size = 46, cx = BAR_X + BAR_W / 2;
+  // centred when nobody owns it, otherwise parked on its owner's side of the bar
+  const own = S.cube.own;
+  const near = nearPlayer();
+  const cy = own === 0 ? H / 2 : (own === near ? BOT_Y - 46 : TOP_Y + 46);
+  const val = S.dbl ? S.cube.v * 2 : S.cube.v;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (S.dbl) ctx.rotate(Math.sin(performance.now() / 140) * 0.09);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
+  const g = ctx.createLinearGradient(0, -size/2, 0, size/2);
+  g.addColorStop(0, S.crawford ? '#5c5348' : '#f2ead6');
+  g.addColorStop(1, S.crawford ? '#3a352d' : '#c8bb9c');
+  ctx.fillStyle = g;
+  const r = size * 0.18;
+  ctx.beginPath();
+  ctx.moveTo(-size/2 + r, -size/2);
+  ctx.arcTo(size/2, -size/2, size/2, size/2, r);
+  ctx.arcTo(size/2, size/2, -size/2, size/2, r);
+  ctx.arcTo(-size/2, size/2, -size/2, -size/2, r);
+  ctx.arcTo(-size/2, -size/2, size/2, -size/2, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = S.dbl ? '#e0b040' : 'rgba(0,0,0,.45)';
+  ctx.lineWidth = S.dbl ? 3 : 1.5;
+  ctx.stroke();
+  ctx.fillStyle = S.crawford ? '#a89a80' : '#2a2118';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold ' + Math.round(size * 0.46) + 'px Georgia';
+  ctx.fillText(S.crawford ? '—' : String(val), 0, 1);
+  ctx.restore();
+  if (S.dbl) requestTick();
+}
+
 function drawBoard() {
   ctx.drawImage(boardLayer(), 0, 0);
 
@@ -2320,18 +2542,20 @@ function drawBoard() {
   for (let k = 0; k < S.off[near]; k++)  slab(near, BOT_Y - 17 - k*12);
   for (let k = 0; k < S.off[-near]; k++) slab(-near, TOP_Y + 7 + k*12);
 
+  drawCube();
+
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
 
   if (S.phase === 'opening') {
     const size = 52;
     ctx.font = '13px Georgia'; ctx.fillStyle = 'rgba(240,225,195,.8)';
     if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
-    ctx.fillText('JOSH',  BAR_X - 78, H/2 - 48);
-    ctx.fillText('DAVID', RIGHT_X + 78, H/2 - 48);
+    ctx.fillText(name(1).toUpperCase(),  BAR_X - 78, H/2 - 48);
+    ctx.fillText(name(-1).toUpperCase(), RIGHT_X + 78, H/2 - 48);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-    if (S.open.w !== null) drawDie(BAR_X - 78 - size/2, H/2 - size/2, S.open.w, size);
+    if (S.open.w !== null) drawDie(BAR_X - 78 - size/2, H/2 - size/2, S.open.w, size, 1);
     else emptySlot(BAR_X - 78 - size/2, H/2 - size/2, size);
-    if (S.open.b !== null) drawDie(RIGHT_X + 78 - size/2, H/2 - size/2, S.open.b, size);
+    if (S.open.b !== null) drawDie(RIGHT_X + 78 - size/2, H/2 - size/2, S.open.b, size, -1);
     else emptySlot(RIGHT_X + 78 - size/2, H/2 - size/2, size);
   } else if (S.dice.length) {
     const size = 50, gap = 13;
@@ -2340,7 +2564,7 @@ function drawBoard() {
     let x = cx - total/2;
     for (const d of S.dice) {
       ctx.globalAlpha = d.used ? 0.3 : 1;
-      drawDie(x, H/2 - size/2, d.v, size);
+      drawDie(x, H/2 - size/2, d.v, size, S.turn);
       ctx.globalAlpha = 1;
       x += size + gap;
     }
@@ -2533,7 +2757,7 @@ function renderHistory() {
   if (!S.hist.length) { box.innerHTML = '<div class="none">No moves yet.</div>'; return; }
   box.innerHTML = S.hist.map((t, i) =>
     '<div class="row"><span class="no">' + (i + 1) + '.</span>' +
-    '<span class="pl ' + (t.c === 1 ? 'j' : 'd') + '">' + (t.c === 1 ? 'Josh' : 'David') + '</span>' +
+    '<span class="pl ' + (t.c === 1 ? 'j' : 'd') + '">' + name(t.c) + '</span>' +
     '<span class="mv">' + t.d.join('-') + '</span>' +
     '<span class="mv">' + (t.m.length ? t.m.join('  ') : '—') + '</span></div>').join('');
   box.scrollTop = box.scrollHeight;
@@ -2550,6 +2774,9 @@ $('soundBtn').onclick = () => {
   soundOn = !soundOn;
   saveSound();
   renderSoundBtn();
+refreshNames();
+$('startTarget').value = String(prefs.target);
+if (!prefs.myName) { $('startModal').hidden = true; openSettings(); }
   if (soundOn) sfx.place();          // a click so you can hear it came back
   else if (audioCtx) { try { audioCtx.suspend(); } catch (e) {} }
 };
@@ -2636,18 +2863,54 @@ $('editScore').onclick = () => {
   $('modal').hidden = false; $('inW').focus(); $('inW').select();
 };
 
+/* ---------- settings ---------- */
+function openSettings() {
+  $('setMyName').value = prefs.myName;
+  $('setOppName').value = prefs.oppName;
+  $('setTarget').value = String(match.target);
+  $('setCube').checked = prefs.cube;
+  $('setPips').checked = prefs.pips;
+  $('setModal').hidden = false;
+  if (!prefs.myName) $('setMyName').focus();
+}
+$('setBtn').onclick = () => { closeMenu(); openSettings(); };
+$('setSave').onclick = () => {
+  prefs.myName = ($('setMyName').value || '').trim().slice(0, 14) || 'You';
+  prefs.oppName = ($('setOppName').value || '').trim().slice(0, 14) || 'Opponent';
+  prefs.cube = $('setCube').checked;
+  prefs.pips = $('setPips').checked;
+  const t = Math.max(0, parseInt($('setTarget').value, 10) || 0);
+  prefs.target = t;
+  savePrefs();
+  act({ type: 'target', v: t });
+  refreshNames();
+  $('setModal').hidden = true;
+  $('startTarget').value = String(t);
+  renderScore(); gate(); draw();
+};
+$('setModal').addEventListener('click', e => { if (e.target === $('setModal') && prefs.myName) $('setModal').hidden = true; });
+
 /* ---------- start screen ---------- */
+function applyStartTarget() {
+  const t = Math.max(0, parseInt($('startTarget').value, 10) || 0);
+  prefs.target = t; savePrefs();
+  match.target = t; match.over = false; match.crawfordDone = false;
+  saveMatch();
+}
 function startLocal() {
+  applyStartTarget();
   leaveNet(true);
   myColor = null;
   $('startModal').hidden = true;
+  refreshNames();
   viewFlip = desiredFlip();
   netStatus('', '');
-  gate(); refit(); draw();
+  renderScore(); gate(); refit(); draw();
 }
 $('forcePortrait').onclick = () => { document.body.classList.add('force-portrait'); refit(); };
 $('startLocal').onclick = () => { tryLockLandscape(); startLocal(); };
 $('startOnline').onclick = () => {
+  applyStartTarget();
   tryLockLandscape();
   $('startModal').hidden = true;
   $('netModal').hidden = false;
@@ -2659,6 +2922,7 @@ $('startOnline').onclick = () => {
 /* ---------- boot ---------- */
 loadTheme();
 loadSound();
+loadPrefs();
 loadMatch();
 saveMatch();
 
@@ -2669,6 +2933,9 @@ newGame();
 showTab('host');
 netStatus('', '');
 renderSoundBtn();
+refreshNames();
+$('startTarget').value = String(prefs.target);
+if (!prefs.myName) { $('startModal').hidden = true; openSettings(); }
 if (resume && resume.s.phase !== 'over') {
   const r = resume.s;
   S.pts = r.pts; S.bar = r.bar; S.off = r.off; S.turn = r.turn;
